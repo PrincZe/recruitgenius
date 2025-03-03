@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
 import { Session, Question } from '@/lib/models/types';
+import InterviewQuestionsClient from './[sessionId]/InterviewQuestionsClient';
 
 // Demo questions to use if none exist in localStorage
 const demoQuestions = [
@@ -26,6 +27,48 @@ const demoQuestions = [
     createdAt: new Date().toISOString()
   }
 ];
+
+// Hash Router component to handle hash-based navigation
+function HashRouter({ children }: { children: React.ReactNode }) {
+  const [currentHash, setCurrentHash] = useState<string>('');
+  const [sessionId, setSessionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Function to handle hash changes
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      setCurrentHash(hash);
+      
+      // Parse the hash to extract sessionId
+      if (hash.startsWith('#interview/')) {
+        const pathParts = hash.substring(12).split('?'); // Remove '#interview/'
+        const id = pathParts[0];
+        setSessionId(id);
+      } else {
+        setSessionId(null);
+      }
+    };
+
+    // Set initial hash
+    handleHashChange();
+
+    // Listen for hash changes
+    window.addEventListener('hashchange', handleHashChange);
+    
+    // Cleanup
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+    };
+  }, []);
+
+  // If we have a sessionId, render the interview questions
+  if (sessionId) {
+    return <InterviewQuestionsClient params={{ sessionId }} />;
+  }
+
+  // Otherwise, render the default content
+  return <>{children}</>;
+}
 
 export default function InterviewStartPage() {
   const [fullName, setFullName] = useState('');
@@ -95,7 +138,7 @@ export default function InterviewStartPage() {
     }
   };
 
-  return (
+  const InterviewForm = () => (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
@@ -167,5 +210,11 @@ export default function InterviewStartPage() {
         </div>
       </div>
     </div>
+  );
+
+  return (
+    <HashRouter>
+      <InterviewForm />
+    </HashRouter>
   );
 } 

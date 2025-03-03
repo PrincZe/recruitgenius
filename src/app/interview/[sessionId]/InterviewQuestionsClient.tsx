@@ -24,64 +24,65 @@ export default function InterviewQuestionsClient({ params }: { params: { session
       setQuestionIndex(parseInt(qParam, 10));
     }
     
-    fetchSessionData();
-  }, [params.sessionId]);
+    // Define fetchSessionData inside useEffect to avoid dependency issues
+    const fetchSessionData = () => {
+      try {
+        setLoading(true);
+        setError(null);
 
-  const fetchSessionData = () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Get session data from localStorage
-      const sessionsData = localStorage.getItem('sessions');
-      if (!sessionsData) {
-        setError('No sessions found');
-        setLoading(false);
-        return;
-      }
-
-      const sessions = JSON.parse(sessionsData);
-      const session = sessions.find((s: Session) => s.id === params.sessionId);
-      
-      if (!session) {
-        setError('Session not found');
-        setLoading(false);
-        return;
-      }
-
-      setSession(session);
-
-      // Get questions data
-      const questionsData = localStorage.getItem('questions');
-      if (!questionsData) {
-        setError('No questions found');
-        setLoading(false);
-        return;
-      }
-
-      const questions = JSON.parse(questionsData);
-      
-      // Get current question based on query parameter
-      if (session.questions.length > questionIndex) {
-        const questionId = session.questions[questionIndex];
-        const question = questions.find((q: Question) => q.id === questionId);
-        
-        if (question) {
-          setCurrentQuestion(question);
-        } else {
-          setError('Question not found');
+        // Get session data from localStorage
+        const sessionsData = localStorage.getItem('sessions');
+        if (!sessionsData) {
+          setError('No sessions found');
+          setLoading(false);
+          return;
         }
-      } else {
-        setError('Invalid question index');
-      }
 
-      setLoading(false);
-    } catch (error) {
-      console.error('Error fetching session data:', error);
-      setError('An error occurred while loading the interview. Please try again.');
-      setLoading(false);
-    }
-  };
+        const sessions = JSON.parse(sessionsData);
+        const session = sessions.find((s: Session) => s.id === params.sessionId);
+        
+        if (!session) {
+          setError('Session not found');
+          setLoading(false);
+          return;
+        }
+
+        setSession(session);
+
+        // Get questions data
+        const questionsData = localStorage.getItem('questions');
+        if (!questionsData) {
+          setError('No questions found');
+          setLoading(false);
+          return;
+        }
+
+        const questions = JSON.parse(questionsData);
+        
+        // Get current question based on query parameter
+        if (session.questions.length > questionIndex) {
+          const questionId = session.questions[questionIndex];
+          const question = questions.find((q: Question) => q.id === questionId);
+          
+          if (question) {
+            setCurrentQuestion(question);
+          } else {
+            setError('Question not found');
+          }
+        } else {
+          setError('Invalid question index');
+        }
+
+        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching session data:', error);
+        setError('An error occurred while loading the interview. Please try again.');
+        setLoading(false);
+      }
+    };
+    
+    fetchSessionData();
+  }, [params.sessionId, questionIndex]);
 
   const handleNextQuestion = () => {
     if (!session) return;

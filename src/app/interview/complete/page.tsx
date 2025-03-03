@@ -29,21 +29,54 @@ const getCandidateById = async (id: string): Promise<Candidate | null> => {
   }
 };
 
-export default function InterviewCompletePage() {
+// Hash Router component to handle hash-based navigation
+function HashRouter({ children }: { children: React.ReactNode }) {
+  const [currentHash, setCurrentHash] = useState<string>('');
+  const [isCompletePage, setIsCompletePage] = useState(false);
+
+  useEffect(() => {
+    // Function to handle hash changes
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      setCurrentHash(hash);
+      
+      // Check if this is the complete page
+      if (hash.startsWith('#interview/complete')) {
+        setIsCompletePage(true);
+      } else {
+        setIsCompletePage(false);
+      }
+    };
+
+    // Set initial hash
+    handleHashChange();
+
+    // Listen for hash changes
+    window.addEventListener('hashchange', handleHashChange);
+    
+    // Cleanup
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+    };
+  }, []);
+
+  // If we're on the complete page, render the complete content
+  if (isCompletePage) {
+    return <InterviewCompleteContent />;
+  }
+
+  // Otherwise, render the default content
+  return <>{children}</>;
+}
+
+function InterviewCompleteContent() {
   const [session, setSession] = useState<Session | null>(null);
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check if we're using hash-based routing
-    const hash = window.location.hash;
-    if (hash && hash.startsWith('#interview/complete')) {
-      fetchSessionData();
-    } else {
-      setError('Invalid session');
-      setLoading(false);
-    }
+    fetchSessionData();
   }, []);
 
   const fetchSessionData = async () => {
@@ -154,5 +187,26 @@ export default function InterviewCompletePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function InterviewCompletePage() {
+  return (
+    <HashRouter>
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="bg-white shadow-md rounded-lg p-8 max-w-md">
+          <h2 className="text-2xl font-bold mb-4">Page Not Found</h2>
+          <p className="text-gray-600 mb-6">
+            The interview completion page is only accessible after completing an interview.
+          </p>
+          <button
+            onClick={() => window.location.href = '/interview'}
+            className="w-full py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Go to Interview Start
+          </button>
+        </div>
+      </div>
+    </HashRouter>
   );
 } 
