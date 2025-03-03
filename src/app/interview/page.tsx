@@ -1,36 +1,47 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
 import { Session, Question } from '@/lib/models/types';
 
-// Demo questions for local testing without database
+// Demo questions to use if none exist in localStorage
 const demoQuestions = [
   {
-    id: 'question1',
-    text: 'Tell me about your professional background and experience.',
-    category: 'Background',
-    createdAt: new Date().toISOString(),
+    id: "q1",
+    text: "Tell me about your background and experience.",
+    category: "Background",
+    createdAt: new Date().toISOString()
   },
   {
-    id: 'question2',
-    text: 'Describe a challenging project you worked on and how you overcame obstacles.',
-    category: 'Experience',
-    createdAt: new Date().toISOString(),
+    id: "q2",
+    text: "What are your strengths and weaknesses?",
+    category: "Personal",
+    createdAt: new Date().toISOString()
   },
   {
-    id: 'question3',
-    text: 'Why are you interested in this position and what makes you a good fit?',
-    category: 'Motivation',
-    createdAt: new Date().toISOString(),
-  },
+    id: "q3",
+    text: "Describe a challenging situation you faced at work and how you handled it.",
+    category: "Experience",
+    createdAt: new Date().toISOString()
+  }
 ];
 
 export default function InterviewStartPage() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const router = useRouter();
+  
+  // Initialize localStorage with demo data if needed
+  useEffect(() => {
+    // Check if questions exist in localStorage
+    const questionsData = localStorage.getItem('questions');
+    if (!questionsData || JSON.parse(questionsData).length === 0) {
+      // If no questions exist, add demo questions
+      localStorage.setItem('questions', JSON.stringify(demoQuestions));
+      console.log('Added demo questions to localStorage');
+    }
+  }, []);
 
   const handleStartInterview = async (e: React.FormEvent) => {
     e.preventDefault();
