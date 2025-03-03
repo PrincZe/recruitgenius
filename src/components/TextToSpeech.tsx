@@ -20,82 +20,9 @@ export default function TextToSpeech({
 }: TextToSpeechProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [useOpenAI, setUseOpenAI] = useState(true); // Default to using OpenAI
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioDataRef = useRef<string | null>(null);
   const textRef = useRef<string>(text);
-  const webSpeechSynthRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const isStaticSite = useRef<boolean>(
-    typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')
-  );
-
-  // Function to stop any existing speech synthesis
-  const stopWebSpeech = useCallback(() => {
-    if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-      if (webSpeechSynthRef.current) {
-        webSpeechSynthRef.current = null;
-      }
-    }
-  }, []);
-
-  // Web Speech API implementation - regular function, not a hook
-  const speakWithWebSpeechAPI = useCallback(() => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) {
-      console.error('Web Speech API not supported in this browser');
-      return false;
-    }
-    
-    try {
-      setIsLoading(true);
-      
-      // Cancel any ongoing speech
-      stopWebSpeech();
-      
-      // Create a new utterance
-      const utterance = new SpeechSynthesisUtterance(text);
-      webSpeechSynthRef.current = utterance;
-      
-      // Set up event handlers
-      utterance.onstart = () => {
-        setIsPlaying(true);
-        setIsLoading(false);
-        onPlaybackStarted?.();
-      };
-      
-      utterance.onend = () => {
-        setIsPlaying(false);
-        webSpeechSynthRef.current = null;
-        onPlaybackEnded?.();
-      };
-      
-      utterance.onerror = (event) => {
-        console.error('Speech synthesis error:', event);
-        setIsPlaying(false);
-        setIsLoading(false);
-        webSpeechSynthRef.current = null;
-      };
-      
-      // Set voice (try to use a neutral voice if available)
-      const voices = window.speechSynthesis.getVoices();
-      if (voices.length > 0) {
-        // Find a neutral or female voice if possible
-        const preferredVoice = voices.find(
-          v => v.name.includes('Google') || v.name.includes('Female') || v.name.includes('Samantha')
-        ) || voices[0];
-        utterance.voice = preferredVoice;
-      }
-      
-      // Only speak once, prevent looping
-      window.speechSynthesis.cancel(); // Clear any existing speech
-      window.speechSynthesis.speak(utterance);
-      return true;
-    } catch (error) {
-      console.error('Error using Web Speech API:', error);
-      setIsLoading(false);
-      return false;
-    }
-  }, [text, onPlaybackStarted, onPlaybackEnded, stopWebSpeech]);
 
   // Define playAudio function for the OpenAI TTS implementation
   const playAudio = useCallback(() => {
@@ -137,8 +64,6 @@ export default function TextToSpeech({
         console.error('Error playing audio:', error);
         setIsPlaying(false);
         setIsLoading(false);
-        // If OpenAI TTS fails, fall back to Web Speech
-        setUseOpenAI(false);
         // Clear the audio data to force a reload next time
         audioDataRef.current = null;
         audioRef.current = null;
@@ -147,33 +72,11 @@ export default function TextToSpeech({
       console.error('Error playing audio:', error);
       setIsPlaying(false);
       setIsLoading(false);
-      // If OpenAI TTS fails, fall back to Web Speech
-      setUseOpenAI(false);
       // Clear the audio data to force a reload next time
       audioDataRef.current = null;
       audioRef.current = null;
     }
   }, [onPlaybackStarted, onPlaybackEnded]);
-
-  // Check if we can use OpenAI TTS
-  useEffect(() => {
-    const checkOpenAITTS = async () => {
-      try {
-        // Try to fetch just the status to see if the API is accessible
-        const response = await fetch('/api/openai/tts', {
-          method: 'HEAD'
-        });
-        
-        // If we get a response (even an error), assume OpenAI TTS is available
-        setUseOpenAI(response.status !== 404);
-      } catch (error) {
-        console.warn('Could not access OpenAI TTS API, falling back to Web Speech API:', error);
-        setUseOpenAI(false);
-      }
-    };
-    
-    checkOpenAITTS();
-  }, []);
 
   // Memoize the convertTextToSpeech function to avoid dependency issues
   const convertTextToSpeech = useCallback(async () => {
@@ -185,38 +88,29 @@ export default function TextToSpeech({
       return;
     }
     
-    // Try OpenAI TTS first if enabled
-    if (useOpenAI) {
-      try {
-        setIsLoading(true);
-        const response = await fetch('/api/openai/tts', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ text, voice }),
-        });
+    try {
+      setIsLoading(true);
+      const response = await fetch('/api/openai/tts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text, voice }),
+      });
 
-        if (!response.ok) {
-          throw new Error('Failed to convert text to speech');
-        }
-
-        const data = await response.json();
-        audioDataRef.current = data.audio;
-        
-        playAudio();
-        return;
-      } catch (error) {
-        console.error('Error with OpenAI TTS, falling back to Web Speech API:', error);
-        // If OpenAI fails, mark it as unavailable
-        setUseOpenAI(false);
-        // Continue to Web Speech API fallback
+      if (!response.ok) {
+        throw new Error(`Failed to convert text to speech: ${response.status} ${response.statusText}`);
       }
+
+      const data = await response.json();
+      audioDataRef.current = data.audio;
+      
+      playAudio();
+    } catch (error) {
+      console.error('Error with OpenAI TTS:', error);
+      setIsLoading(false);
     }
-    
-    // Fall back to Web Speech API
-    speakWithWebSpeechAPI();
-  }, [text, voice, playAudio, speakWithWebSpeechAPI, useOpenAI]);
+  }, [text, voice, playAudio]);
 
   // Reset audio data when text changes
   useEffect(() => {
@@ -227,8 +121,6 @@ export default function TextToSpeech({
         audioRef.current.pause();
         audioRef.current = null;
       }
-      // Stop any web speech synthesis
-      stopWebSpeech();
       
       textRef.current = text;
       
@@ -237,7 +129,7 @@ export default function TextToSpeech({
         convertTextToSpeech();
       }
     }
-  }, [text, autoPlay, convertTextToSpeech, stopWebSpeech]);
+  }, [text, autoPlay, convertTextToSpeech]);
 
   // Initial auto-play
   useEffect(() => {
@@ -253,31 +145,40 @@ export default function TextToSpeech({
         audioRef.current.pause();
         audioRef.current = null;
       }
-      stopWebSpeech();
+      audioDataRef.current = null;
     };
-  }, [stopWebSpeech]);
+  }, []);
+
+  const handleClick = () => {
+    if (isPlaying) {
+      // If already playing, pause it
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      setIsPlaying(false);
+    } else {
+      // If not playing, start playing
+      convertTextToSpeech();
+    }
+  };
 
   return (
-    <button
-      onClick={convertTextToSpeech}
-      disabled={isLoading || isPlaying}
-      className={`flex items-center justify-center px-4 py-2 rounded-md text-white ${
-        isPlaying 
-          ? 'bg-green-500 hover:bg-green-600' 
-          : 'bg-blue-500 hover:bg-blue-600'
-      } disabled:opacity-50 disabled:cursor-not-allowed`}
-    >
-      {isLoading ? (
-        <>
-          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-          Loading...
-        </>
-      ) : (
-        <>
-          <Volume2 className="w-5 h-5 mr-2" />
-          {isPlaying ? 'Playing...' : 'Play Question'}
-        </>
-      )}
-    </button>
+    <div className="flex items-center space-x-2">
+      <button
+        onClick={handleClick}
+        disabled={isLoading}
+        className="flex items-center justify-center p-2 text-gray-700 bg-white rounded-full shadow hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        aria-label={isPlaying ? "Pause audio" : "Play audio"}
+      >
+        {isLoading ? (
+          <Loader2 className="w-5 h-5 animate-spin" />
+        ) : (
+          <Volume2 className={`w-5 h-5 ${isPlaying ? 'text-blue-600' : 'text-gray-700'}`} />
+        )}
+      </button>
+      <span className="text-sm text-gray-500">
+        {isLoading ? "Loading audio..." : isPlaying ? "Playing" : "Click to play"}
+      </span>
+    </div>
   );
 } 

@@ -1,7 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Only use static export for production builds
-  output: process.env.NODE_ENV === 'production' ? 'export' : undefined,
+  // Comment out static export to allow API routes to work
+  // output: process.env.NODE_ENV === 'production' ? 'export' : undefined,
+  output: undefined, // Always use server rendering to enable API routes
   images: {
     remotePatterns: [
       {

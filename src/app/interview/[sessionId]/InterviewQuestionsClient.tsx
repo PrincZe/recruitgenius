@@ -168,59 +168,58 @@ export default function InterviewQuestionsClient({ params }: { params: { session
       const sessionsData = localStorage.getItem('sessions');
       const sessions = sessionsData ? JSON.parse(sessionsData) : [];
       
-      // Remove any existing session with the same ID to avoid duplicates
-      const filteredSessions = sessions.filter((s: Session) => s.id !== params.sessionId);
-      filteredSessions.push(newSession);
-      localStorage.setItem('sessions', JSON.stringify(filteredSessions));
-      console.log(`Created demo session and saved to localStorage. Total sessions: ${filteredSessions.length}`);
+      // Check if session already exists
+      const existingSessionIndex = sessions.findIndex((s: Session) => s.id === params.sessionId);
+      if (existingSessionIndex >= 0) {
+        // Update existing session
+        sessions[existingSessionIndex] = newSession;
+      } else {
+        // Add new session
+        sessions.push(newSession);
+      }
       
-      // Also create empty recordings for previous questions if needed
-      const recordingsData = localStorage.getItem('recordings');
-      const recordings = recordingsData ? JSON.parse(recordingsData) : [];
+      localStorage.setItem('sessions', JSON.stringify(sessions));
+      console.log(`Created demo session and saved to localStorage. Total sessions: ${sessions.length}`);
       
-      // Create dummy recordings for previous questions to allow navigation
+      // Create dummy recordings for previous questions to maintain state
       if (questionIndex > 0) {
+        const recordingsData = localStorage.getItem('recordings');
+        const recordings = recordingsData ? JSON.parse(recordingsData) : [];
+        
+        // For each previous question, create a dummy recording if it doesn't exist
         for (let i = 0; i < questionIndex; i++) {
           const questionId = questions[i].id;
+          
+          // Check if recording already exists
           const existingRecording = recordings.find(
             (r: any) => r.candidateId === candidateId && r.questionId === questionId
           );
           
           if (!existingRecording) {
+            // Create dummy recording
             recordings.push({
-              audioUrl: "",
-              transcript: "Auto-generated response for demo",
-              candidateId: candidateId,
-              questionId: questionId,
+              audioUrl: "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=", // Empty audio
+              transcript: "Demo recording",
+              candidateId,
+              questionId,
               createdAt: new Date().toISOString()
             });
           }
         }
+        
         localStorage.setItem('recordings', JSON.stringify(recordings));
-        console.log(`Created ${questionIndex} dummy recordings for previous questions`);
+        console.log(`Added dummy recordings for previous questions`);
       }
       
-      // Apply the changes directly to the state instead of reloading
-      setSession(newSession);
-      
-      // Get the current question
-      if (questions.length > questionIndex) {
-        const question = questions[questionIndex];
-        if (question) {
-          setCurrentQuestion(question);
-          setError(null);
-          setLoading(false);
-          console.log(`Set current question: ${question.text}`);
-          return;
-        }
-      }
-      
-      // If we couldn't set the question directly, reload as a fallback
-      console.log('Reloading page to refresh with new session data...');
-      window.location.reload();
+      // Return the new session and current question
+      return {
+        session: newSession,
+        currentQuestion: questions[questionIndex]
+      };
     } catch (error) {
       console.error('Error creating demo session:', error);
       setError('Failed to create demo session. Please try refreshing the page.');
+      return null;
     }
   };
 
@@ -313,6 +312,8 @@ export default function InterviewQuestionsClient({ params }: { params: { session
     questionId: string;
   }) => {
     try {
+      console.log(`Saving recording for question: ${data.questionId}`);
+      
       // Save recording to localStorage
       const recordingsData = localStorage.getItem('recordings');
       const recordings = recordingsData ? JSON.parse(recordingsData) : [];
@@ -331,13 +332,16 @@ export default function InterviewQuestionsClient({ params }: { params: { session
       if (existingIndex >= 0) {
         // Update existing recording
         recordings[existingIndex] = recordingWithTimestamp;
+        console.log(`Updated existing recording at index ${existingIndex}`);
       } else {
         // Add new recording
         recordings.push(recordingWithTimestamp);
+        console.log(`Added new recording to recordings array`);
       }
       
       // Save to localStorage
       localStorage.setItem('recordings', JSON.stringify(recordings));
+      console.log(`Saved recordings to localStorage. Total recordings: ${recordings.length}`);
       
       // Update session progress if needed
       if (session) {
@@ -346,25 +350,46 @@ export default function InterviewQuestionsClient({ params }: { params: { session
           const sessions = JSON.parse(sessionsData);
           const updatedSessions = sessions.map((s: Session) => {
             if (s.id === session.id) {
+              // Make sure progress is at least the current question index
+              const newProgress = Math.max(s.progress, questionIndex);
+              console.log(`Updating session progress to ${newProgress}`);
               return { 
                 ...s, 
-                progress: Math.max(s.progress, questionIndex + 1) 
+                progress: newProgress
               };
             }
             return s;
           });
           
           localStorage.setItem('sessions', JSON.stringify(updatedSessions));
+          console.log(`Updated session progress in localStorage`);
+          
+          // Update the session state
+          setSession((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              progress: Math.max(prev.progress, questionIndex)
+            };
+          });
+        }
+      } else {
+        console.error('No session found when trying to update progress');
+        // Try to recreate session if it's missing
+        const result = createDemoSession();
+        if (result) {
+          setSession(result.session);
+          setCurrentQuestion(result.currentQuestion);
         }
       }
       
-      // Mark recording as submitted to enable the next button
+      // Mark question as submitted
       setRecordingSubmitted(true);
+      console.log(`Marked question as submitted`);
       
-      console.log('Recording saved successfully');
     } catch (error) {
       console.error('Error saving recording:', error);
-      alert('There was a problem saving your recording. Please try again.');
+      alert('There was an issue saving your recording. Please try again.');
     }
   };
 
