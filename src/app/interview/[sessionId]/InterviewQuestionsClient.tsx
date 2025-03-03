@@ -1,117 +1,135 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
 import { Session, Question } from '@/lib/models/types';
 import TextToSpeech from '@/components/TextToSpeech';
 import VoiceRecorder from '@/components/VoiceRecorder';
-import { ChevronRight, ChevronLeft, Loader2, CheckCircle } from 'lucide-react';
 
 export default function InterviewQuestionsClient({ params }: { params: { sessionId: string } }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const questionIndex = parseInt(searchParams.get('q') || '0');
-  
   const [session, setSession] = useState<Session | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [recordingSubmitted, setRecordingSubmitted] = useState(false);
-  const [isCompleting, setIsCompleting] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false);
+  const [questionIndex, setQuestionIndex] = useState(0);
 
   useEffect(() => {
-    const fetchSessionData = () => {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        // Get sessions from localStorage
-        const sessionsData = localStorage.getItem('sessions');
-        
-        if (!sessionsData) {
-          setError('No sessions found');
-          setLoading(false);
-          return;
-        }
-        
-        const sessions = JSON.parse(sessionsData) as Session[];
-        const fetchedSession = sessions.find(s => s.id === params.sessionId);
-        
-        if (!fetchedSession) {
-          setError('Interview session not found');
-          setLoading(false);
-          return;
-        }
-        
-        setSession(fetchedSession);
-        
-        // Get the current question ID from the session questions array
-        const questionId = fetchedSession.questions[questionIndex];
-        if (!questionId) {
-          setError('Question not found');
-          setLoading(false);
-          return;
-        }
-        
-        // Get questions from localStorage
-        const questionsData = localStorage.getItem('questions');
-        if (!questionsData) {
-          setError('Questions not found');
-          setLoading(false);
-          return;
-        }
-        
-        const questions = JSON.parse(questionsData) as Question[];
-        const questionData = questions.find(q => q.id === questionId);
-        
-        if (!questionData) {
-          setError('Question not found');
-          setLoading(false);
-          return;
-        }
-        
-        setCurrentQuestion(questionData);
-      } catch (error) {
-        console.error('Error fetching session data:', error);
-        setError('An error occurred while loading the interview. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    };
+    // Parse query parameters from hash
+    const hash = window.location.hash;
+    const queryParams = new URLSearchParams(hash.split('?')[1] || '');
+    const qParam = queryParams.get('q');
+    
+    if (qParam !== null) {
+      setQuestionIndex(parseInt(qParam, 10));
+    }
     
     fetchSessionData();
-  }, [params.sessionId, questionIndex]);
+  }, [params.sessionId]);
+
+  const fetchSessionData = () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Get session data from localStorage
+      const sessionsData = localStorage.getItem('sessions');
+      if (!sessionsData) {
+        setError('No sessions found');
+        setLoading(false);
+        return;
+      }
+
+      const sessions = JSON.parse(sessionsData);
+      const session = sessions.find((s: Session) => s.id === params.sessionId);
+      
+      if (!session) {
+        setError('Session not found');
+        setLoading(false);
+        return;
+      }
+
+      setSession(session);
+
+      // Get questions data
+      const questionsData = localStorage.getItem('questions');
+      if (!questionsData) {
+        setError('No questions found');
+        setLoading(false);
+        return;
+      }
+
+      const questions = JSON.parse(questionsData);
+      
+      // Get current question based on query parameter
+      if (session.questions.length > questionIndex) {
+        const questionId = session.questions[questionIndex];
+        const question = questions.find((q: Question) => q.id === questionId);
+        
+        if (question) {
+          setCurrentQuestion(question);
+        } else {
+          setError('Question not found');
+        }
+      } else {
+        setError('Invalid question index');
+      }
+
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching session data:', error);
+      setError('An error occurred while loading the interview. Please try again.');
+      setLoading(false);
+    }
+  };
 
   const handleNextQuestion = () => {
     if (!session) return;
     
     const nextIndex = questionIndex + 1;
+    
     if (nextIndex < session.questions.length) {
-      // Update session progress in localStorage
-      const updatedSession = { ...session, progress: nextIndex };
+      // Update URL with hash-based routing
+      window.location.hash = `interview/${params.sessionId}?q=${nextIndex}`;
+      setQuestionIndex(nextIndex);
+      setRecordingSubmitted(false);
       
-      // Update the session in the sessions array
-      const sessionsData = localStorage.getItem('sessions');
-      if (sessionsData) {
-        const sessions = JSON.parse(sessionsData) as Session[];
-        const sessionIndex = sessions.findIndex(s => s.id === session.id);
-        if (sessionIndex !== -1) {
-          sessions[sessionIndex] = updatedSession;
-          localStorage.setItem('sessions', JSON.stringify(sessions));
+      // Fetch the next question
+      const questionsData = localStorage.getItem('questions');
+      if (questionsData) {
+        const questions = JSON.parse(questionsData);
+        const questionId = session.questions[nextIndex];
+        const question = questions.find((q: Question) => q.id === questionId);
+        
+        if (question) {
+          setCurrentQuestion(question);
         }
       }
-      
-      router.push(`/interview/${params.sessionId}?q=${nextIndex}`);
-      setRecordingSubmitted(false);
     } else {
+      // All questions completed
       handleCompleteInterview();
     }
   };
 
   const handlePreviousQuestion = () => {
     if (questionIndex > 0) {
-      router.push(`/interview/${params.sessionId}?q=${questionIndex - 1}`);
+      const prevIndex = questionIndex - 1;
+      // Update URL with hash-based routing
+      window.location.hash = `interview/${params.sessionId}?q=${prevIndex}`;
+      setQuestionIndex(prevIndex);
       setRecordingSubmitted(false);
+      
+      // Fetch the previous question
+      const questionsData = localStorage.getItem('questions');
+      if (questionsData) {
+        const questions = JSON.parse(questionsData);
+        const questionId = session?.questions[prevIndex];
+        const question = questions.find((q: Question) => q.id === questionId);
+        
+        if (question) {
+          setCurrentQuestion(question);
+        }
+      }
     }
   };
 
@@ -121,69 +139,54 @@ export default function InterviewQuestionsClient({ params }: { params: { session
     candidateId: string;
     questionId: string;
   }) => {
-    console.log('Recording completed successfully for question:', data.questionId);
-    console.log('Transcript length:', data.transcript.length);
-    console.log('Audio URL starts with:', data.audioUrl.substring(0, 30) + '...');
+    // Save recording to localStorage
+    const recordingsData = localStorage.getItem('recordings');
+    const recordings = recordingsData ? JSON.parse(recordingsData) : [];
+    recordings.push(data);
+    localStorage.setItem('recordings', JSON.stringify(recordings));
     
-    // Always set recording as submitted, even if there are issues with the audio
     setRecordingSubmitted(true);
   };
 
   const handleCompleteInterview = async () => {
-    try {
-      setIsCompleting(true);
-      
-      // Update the session as completed in localStorage
-      if (session) {
-        const updatedSession = { 
-          ...session, 
-          progress: session.questions.length,
-          isCompleted: true,
-          completedAt: new Date().toISOString()
-        };
-        
-        // Update the session in the sessions array
-        const sessionsData = localStorage.getItem('sessions');
-        if (sessionsData) {
-          const sessions = JSON.parse(sessionsData) as Session[];
-          const sessionIndex = sessions.findIndex(s => s.id === session.id);
-          if (sessionIndex !== -1) {
-            sessions[sessionIndex] = updatedSession;
-            localStorage.setItem('sessions', JSON.stringify(sessions));
-          }
+    if (!session) return;
+    
+    // Update session as completed
+    const sessionsData = localStorage.getItem('sessions');
+    if (sessionsData) {
+      const sessions = JSON.parse(sessionsData);
+      const updatedSessions = sessions.map((s: Session) => {
+        if (s.id === session.id) {
+          return { ...s, isCompleted: true };
         }
-      }
+        return s;
+      });
       
-      // Redirect to the completion page
-      router.push(`/interview/complete?sessionId=${params.sessionId}`);
-    } catch (error) {
-      console.error('Error completing interview:', error);
-      setError('An error occurred while completing the interview.');
-    } finally {
-      setIsCompleting(false);
+      localStorage.setItem('sessions', JSON.stringify(updatedSessions));
     }
+    
+    setIsCompleted(true);
+    // Navigate to completion page using hash-based routing
+    window.location.hash = 'interview/complete';
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 mx-auto animate-spin text-blue-500" />
-          <p className="mt-4 text-lg font-medium text-gray-700">Loading question...</p>
-        </div>
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
       </div>
     );
   }
 
-  if (error || !session || !currentQuestion) {
+  if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md">
-          <h2 className="text-2xl font-bold text-red-600 mb-4">Error</h2>
-          <p className="text-gray-700 mb-6">{error || 'An unexpected error occurred.'}</p>
-          <button
-            onClick={() => router.push('/interview')}
-            className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+      <div className="flex flex-col justify-center items-center min-h-screen p-4">
+        <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 max-w-md">
+          <h3 className="text-lg font-medium mb-2">Error</h3>
+          <p>{error}</p>
+          <button 
+            onClick={() => window.location.href = '/interview'}
+            className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
           >
             Return to Start
           </button>
@@ -192,95 +195,83 @@ export default function InterviewQuestionsClient({ params }: { params: { session
     );
   }
 
-  const isLastQuestion = questionIndex === session.questions.length - 1;
+  if (isCompleted) {
+    return (
+      <div className="flex flex-col justify-center items-center min-h-screen p-4">
+        <div className="bg-green-50 border border-green-200 text-green-800 rounded-lg p-4 max-w-md text-center">
+          <h3 className="text-lg font-medium mb-2">Interview Completed</h3>
+          <p>Thank you for completing the interview. Your responses have been recorded.</p>
+          <button 
+            onClick={() => window.location.href = '/interview'}
+            className="mt-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+          >
+            Return to Start
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-3xl mx-auto">
-        <div className="mb-8">
-          <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-gray-900">Interview Question {questionIndex + 1}</h1>
-            <div className="text-sm text-gray-500">
-              Question {questionIndex + 1} of {session.questions.length}
+    <div className="max-w-4xl mx-auto p-4 min-h-screen flex flex-col">
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold mb-2">Interview Question {questionIndex + 1}</h1>
+        <div className="h-2 bg-gray-200 rounded-full mb-4">
+          <div 
+            className="h-2 bg-blue-600 rounded-full" 
+            style={{ width: `${((questionIndex + 1) / (session?.questions.length || 1)) * 100}%` }}
+          ></div>
+        </div>
+      </div>
+
+      {currentQuestion && session && (
+        <div className="bg-white shadow-md rounded-lg p-6 mb-6 flex-grow">
+          <h2 className="text-xl font-semibold mb-4">{currentQuestion.text}</h2>
+          
+          {currentQuestion.category && (
+            <div className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded mb-4">
+              {currentQuestion.category}
             </div>
+          )}
+          
+          <div className="mb-6">
+            <TextToSpeech 
+              text={currentQuestion.text} 
+              autoPlay={true}
+            />
           </div>
-          <div className="w-full bg-gray-200 h-2 mt-4 rounded-full overflow-hidden">
-            <div 
-              className="bg-blue-500 h-full transition-all duration-300 ease-in-out" 
-              style={{ width: `${((questionIndex + 1) / session.questions.length) * 100}%` }}
+          
+          <div className="mb-6">
+            <h3 className="text-lg font-medium mb-2">Your Response</h3>
+            <VoiceRecorder 
+              questionId={currentQuestion.id}
+              candidateId={session.candidateId}
+              onRecordingComplete={handleRecordingComplete}
             />
           </div>
         </div>
+      )}
 
-        <div className="bg-white shadow-md rounded-lg overflow-hidden mb-8">
-          <div className="p-6">
-            <h2 className="text-xl font-semibold mb-4 text-gray-800">{currentQuestion.text}</h2>
-            <div className="mb-6">
-              <TextToSpeech 
-                text={currentQuestion.text} 
-                autoPlay={true}
-                onPlaybackStarted={() => console.log('Question playback started')}
-                onPlaybackEnded={() => console.log('Question playback ended')}
-              />
-            </div>
-            
-            <div className="mt-8">
-              {recordingSubmitted ? (
-                <div className="flex items-center justify-center p-6 bg-green-50 rounded-lg">
-                  <CheckCircle className="h-6 w-6 text-green-500 mr-2" />
-                  <span className="text-green-700 font-medium">Response submitted successfully!</span>
-                </div>
-              ) : (
-                <VoiceRecorder 
-                  questionId={currentQuestion.id} 
-                  candidateId={session.candidateId}
-                  onRecordingComplete={handleRecordingComplete}
-                />
-              )}
-            </div>
-          </div>
-
-          <div className="px-6 py-4 bg-gray-50 flex justify-between">
-            <button
-              onClick={handlePreviousQuestion}
-              disabled={questionIndex === 0}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <ChevronLeft className="h-5 w-5 mr-1" />
-              Previous
-            </button>
-            
-            <button
-              onClick={isLastQuestion ? handleCompleteInterview : handleNextQuestion}
-              disabled={!recordingSubmitted && !isCompleting}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLastQuestion ? (
-                isCompleting ? (
-                  <>
-                    <Loader2 className="h-5 w-5 mr-1 animate-spin" />
-                    Completing...
-                  </>
-                ) : (
-                  'Complete Interview'
-                )
-              ) : (
-                <>
-                  Next
-                  <ChevronRight className="h-5 w-5 ml-1" />
-                </>
-              )}
-            </button>
-          </div>
-        </div>
+      <div className="flex justify-between mt-auto">
+        <button
+          onClick={handlePreviousQuestion}
+          disabled={questionIndex === 0}
+          className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Previous Question
+        </button>
         
-        {/* Debug information */}
-        <div className="mt-4 p-4 bg-gray-100 rounded-lg text-xs text-gray-600">
-          <p>Recording submitted: {recordingSubmitted ? 'Yes' : 'No'}</p>
-          <p>Current question index: {questionIndex}</p>
-          <p>Total questions: {session.questions.length}</p>
-          <p>Is last question: {isLastQuestion ? 'Yes' : 'No'}</p>
-        </div>
+        <button
+          onClick={handleNextQuestion}
+          disabled={!recordingSubmitted}
+          className={`px-4 py-2 border border-transparent rounded-md text-white ${
+            questionIndex === (session?.questions.length || 0) - 1 
+              ? 'bg-green-600 hover:bg-green-700' 
+              : 'bg-blue-600 hover:bg-blue-700'
+          } disabled:opacity-50 disabled:cursor-not-allowed`}
+        >
+          {questionIndex === (session?.questions.length || 0) - 1 ? 'Complete Interview' : 'Next Question'}
+        </button>
       </div>
     </div>
   );

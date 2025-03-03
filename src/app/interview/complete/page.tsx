@@ -1,124 +1,157 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
-import Link from 'next/link';
-import { Session } from '@/lib/models/types';
-import { CheckCircle, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Session, Candidate } from '@/lib/models/types';
 
-// Get session from localStorage
 const getSessionById = async (id: string): Promise<Session | null> => {
   try {
-    // Try to get sessions from localStorage
-    const storedSessions = localStorage.getItem('sessions');
-    if (storedSessions) {
-      const sessions: Session[] = JSON.parse(storedSessions);
-      const session = sessions.find(s => s.id === id);
-      if (session) {
-        return session;
-      }
-    }
-    return null;
+    const sessionsData = localStorage.getItem('sessions');
+    if (!sessionsData) return null;
+    
+    const sessions = JSON.parse(sessionsData);
+    return sessions.find((s: Session) => s.id === id) || null;
   } catch (error) {
-    console.error(`Error getting session with ID ${id}:`, error);
+    console.error('Error getting session:', error);
+    return null;
+  }
+};
+
+const getCandidateById = async (id: string): Promise<Candidate | null> => {
+  try {
+    const candidatesData = localStorage.getItem('candidates');
+    if (!candidatesData) return null;
+    
+    const candidates = JSON.parse(candidatesData);
+    return candidates.find((c: Candidate) => c.id === id) || null;
+  } catch (error) {
+    console.error('Error getting candidate:', error);
     return null;
   }
 };
 
 export default function InterviewCompletePage() {
-  const searchParams = useSearchParams();
-  const sessionId = searchParams.get('sessionId');
-  
   const [session, setSession] = useState<Session | null>(null);
+  const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchSessionData = async () => {
-      if (!sessionId) {
-        setError('No session ID provided');
+    // Check if we're using hash-based routing
+    const hash = window.location.hash;
+    if (hash && hash.startsWith('#interview/complete')) {
+      fetchSessionData();
+    } else {
+      setError('Invalid session');
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchSessionData = async () => {
+    try {
+      setLoading(true);
+      
+      // Get sessions from localStorage
+      const sessionsData = localStorage.getItem('sessions');
+      if (!sessionsData) {
+        setError('No sessions found');
         setLoading(false);
         return;
       }
-
-      try {
-        setLoading(true);
-        const fetchedSession = await getSessionById(sessionId);
-        
-        if (!fetchedSession) {
-          setError('Session not found');
-          setLoading(false);
-          return;
-        }
-        
-        setSession(fetchedSession);
-      } catch (error) {
-        console.error('Error fetching session data:', error);
-        setError('An error occurred while loading your session data.');
-      } finally {
+      
+      const sessions = JSON.parse(sessionsData);
+      
+      // Get the most recently completed session
+      const completedSessions = sessions.filter((s: Session) => s.isCompleted);
+      if (completedSessions.length === 0) {
+        setError('No completed sessions found');
         setLoading(false);
+        return;
       }
-    };
-    
-    fetchSessionData();
-  }, [sessionId]);
+      
+      // Sort by createdAt in descending order and get the most recent
+      const sortedSessions = completedSessions.sort((a: Session, b: Session) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      
+      const latestSession = sortedSessions[0];
+      setSession(latestSession);
+      
+      // Get candidate data
+      const candidateData = await getCandidateById(latestSession.candidateId);
+      setCandidate(candidateData);
+      
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching session data:', error);
+      setError('An error occurred while loading the completion page.');
+      setLoading(false);
+    }
+  };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 mx-auto animate-spin text-blue-500" />
-          <p className="mt-4 text-lg font-medium text-gray-700">Loading...</p>
-        </div>
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
       </div>
     );
   }
 
   if (error || !session) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md">
-          <h2 className="text-2xl font-bold text-red-600 mb-4">Error</h2>
-          <p className="text-gray-700 mb-6">{error || 'An unexpected error occurred.'}</p>
-          <Link 
-            href="/interview"
-            className="block w-full py-2 px-4 bg-blue-600 text-white text-center rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+      <div className="flex flex-col justify-center items-center min-h-screen p-4">
+        <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 max-w-md">
+          <h3 className="text-lg font-medium mb-2">Error</h3>
+          <p>{error || 'An unexpected error occurred.'}</p>
+          <button 
+            onClick={() => window.location.href = '/interview'}
+            className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
           >
             Return to Start
-          </Link>
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center p-4">
-      <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-6">
-          <CheckCircle className="h-10 w-10 text-green-500" />
+    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-3xl mx-auto">
+        <div className="text-center mb-12">
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">Interview Completed</h1>
+          <div className="bg-green-100 text-green-800 rounded-full px-4 py-1 inline-flex items-center">
+            <svg className="h-5 w-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+            Success
+          </div>
         </div>
-        
-        <h1 className="text-3xl font-bold text-gray-900 mb-4">
-          Interview Complete
-        </h1>
-        
-        <p className="text-lg text-gray-700 mb-8">
-          Thank you for completing your interview. Your responses have been recorded successfully.
-        </p>
-        
-        <div className="rounded-lg bg-blue-50 p-4 mb-8">
-          <h3 className="font-medium text-blue-800 mb-2">What happens next?</h3>
-          <p className="text-blue-700 text-sm">
-            The hiring team will review your responses and get back to you if they&apos;d like to proceed with your application.
-          </p>
+
+        <div className="bg-white shadow-md rounded-lg overflow-hidden mb-8">
+          <div className="p-6">
+            <h2 className="text-xl font-semibold mb-6 text-gray-800">Thank You for Completing Your Interview</h2>
+            
+            {candidate && (
+              <div className="mb-6">
+                <p className="text-gray-600 mb-2">Name: <span className="font-medium text-gray-900">{candidate.name}</span></p>
+                <p className="text-gray-600">Email: <span className="font-medium text-gray-900">{candidate.email}</span></p>
+              </div>
+            )}
+            
+            <div className="prose max-w-none text-gray-600">
+              <p>Your responses have been recorded successfully. The hiring team will review your interview and get back to you soon.</p>
+              <p className="mt-4">If you have any questions about the interview process, please contact the hiring team.</p>
+            </div>
+          </div>
         </div>
-        
-        <Link 
-          href="/"
-          className="inline-block w-full py-3 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          Return to Homepage
-        </Link>
+
+        <div className="text-center">
+          <button
+            onClick={() => window.location.href = '/interview'}
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Return to Start
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -1,4 +1,3 @@
-import { Session, Question } from '@/lib/models/types';
 import InterviewQuestionsClient from './InterviewQuestionsClient';
 
 // This function is required for static site generation with dynamic routes
