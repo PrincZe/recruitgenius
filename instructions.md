@@ -88,3 +88,14 @@
     *   Ensure that you can connect your keys and bring into the interface and that it shows everything that needs to be shown on the dashboard.
 
 ---
+
+## Environment Variables
+
+*   OPENAI_API_KEY=your_openai_key
+*   DEEPGRAM_API_KEY=your_deepgram_key
+*   FIREBASE_API_KEY=your_firebase_key
+*   FIREBASE_AUTH_DOMAIN=your_firebase_auth_domain
+*   FIREBASE_PROJECT_ID=your_firebase_project_id
+*   FIREBASE_STORAGE_BUCKET=your_firebase_storage_bucket
+*   FIREBASE_MESSAGING_SENDER_ID=your_firebase_messaging_sender_id
+*   FIREBASE_APP_ID=your_firebase_app_id

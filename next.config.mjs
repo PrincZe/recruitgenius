@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Only use static export for production builds
+  output: process.env.NODE_ENV === 'production' ? 'export' : undefined,
   images: {
     remotePatterns: [
       {
@@ -23,14 +25,20 @@ const nextConfig = {
     ],
     dangerouslyAllowSVG: true,
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+    // Only use unoptimized images for static export
+    unoptimized: process.env.NODE_ENV === 'production',
   },
   async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-        destination: "https://api.openai.com/:path*",
-      },
-    ];
+    // Only use rewrites in development
+    if (process.env.NODE_ENV !== 'production') {
+      return [
+        {
+          source: "/api/:path*",
+          destination: "https://api.openai.com/:path*",
+        },
+      ];
+    }
+    return [];
   },
 };
 

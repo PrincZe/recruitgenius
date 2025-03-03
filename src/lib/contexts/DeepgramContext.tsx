@@ -26,9 +26,14 @@ interface DeepgramContextProviderProps {
 }
 
 const getApiKey = async (): Promise<string> => {
-  const response = await fetch("/api/deepgram", { cache: "no-store" });
-  const result = await response.json();
-  return result.key;
+  try {
+    const response = await fetch("/api/deepgram", { cache: "no-store" });
+    const result = await response.json();
+    return result.key;
+  } catch (error) {
+    console.error("Error fetching Deepgram API key:", error);
+    throw new Error("Failed to get Deepgram API key");
+  }
 };
 
 const DeepgramContextProvider: FunctionComponent<DeepgramContextProviderProps> = ({ children }) => {
@@ -40,38 +45,72 @@ const DeepgramContextProvider: FunctionComponent<DeepgramContextProviderProps> =
 
   const connectToDeepgram = async () => {
     try {
+      // Clean up any existing connections first
+      disconnectFromDeepgram();
+      
       setError(null);
       setRealtimeTranscript("");
+      
+      console.log("Requesting microphone access...");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioRef.current = new MediaRecorder(stream);
+      
+      console.log("Creating audio recorder...");
+      audioRef.current = new MediaRecorder(stream, {
+        mimeType: 'audio/webm' // Use a simpler format
+      });
 
+      console.log("Fetching Deepgram API key...");
       const apiKey = await getApiKey();
 
       console.log("Opening WebSocket connection...");
       const socket = new WebSocket("wss://api.deepgram.com/v1/listen", ["token", apiKey]);
 
       socket.onopen = () => {
-        setConnectionState(SOCKET_STATES.open);
-        console.log("WebSocket connection opened");
-        audioRef.current!.addEventListener("dataavailable", (event) => {
-          if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
-            socket.send(event.data);
+        try {
+          setConnectionState(SOCKET_STATES.open);
+          console.log("WebSocket connection opened successfully");
+          
+          if (audioRef.current) {
+            audioRef.current.addEventListener("dataavailable", (event) => {
+              if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+                try {
+                  socket.send(event.data);
+                } catch (error) {
+                  console.error("Error sending audio data:", error);
+                }
+              }
+            });
+
+            try {
+              audioRef.current.start(1000); // Collect data every 1 second for stability
+              console.log("Audio recording started");
+            } catch (error) {
+              console.error("Error starting audio recording:", error);
+              setError("Failed to start audio recording");
+            }
           }
-        });
-
-        audioRef.current!.start(250);
-      };
-
-      socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.channel && data.channel.alternatives && data.channel.alternatives[0]) {
-          const newTranscript = data.channel.alternatives[0].transcript;
-          setRealtimeTranscript((prev) => prev + " " + newTranscript);
+        } catch (error) {
+          console.error("Error in WebSocket onopen handler:", error);
+          setError("Error setting up connection");
         }
       };
 
-      socket.onerror = (error) => {
-        console.error("WebSocket error:", error);
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.channel && data.channel.alternatives && data.channel.alternatives[0]) {
+            const newTranscript = data.channel.alternatives[0].transcript;
+            if (newTranscript) {
+              setRealtimeTranscript((prev) => prev + " " + newTranscript);
+            }
+          }
+        } catch (error) {
+          console.error("Error processing WebSocket message:", error);
+        }
+      };
+
+      socket.onerror = (event) => {
+        console.error("WebSocket error:", event);
         setError("Error connecting to Deepgram. Please try again.");
         disconnectFromDeepgram();
       };
@@ -86,19 +125,53 @@ const DeepgramContextProvider: FunctionComponent<DeepgramContextProviderProps> =
       console.error("Error starting voice recognition:", error);
       setError(error instanceof Error ? error.message : "An unknown error occurred");
       setConnectionState(SOCKET_STATES.closed);
+      
+      // Make sure to clean up any partial setup
+      try {
+        if (audioRef.current && audioRef.current.stream) {
+          audioRef.current.stream.getTracks().forEach(track => track.stop());
+        }
+      } catch (cleanupError) {
+        console.error("Error during cleanup after connection failure:", cleanupError);
+      }
     }
   };
 
   const disconnectFromDeepgram = () => {
-    if (connection) {
-      connection.close();
-      setConnection(null);
+    try {
+      console.log("Disconnecting from Deepgram...");
+      
+      if (connection) {
+        if (connection.readyState === WebSocket.OPEN) {
+          connection.close(1000, "Disconnected by user");
+        }
+        setConnection(null);
+      }
+      
+      if (audioRef.current) {
+        try {
+          if (audioRef.current.state !== 'inactive') {
+            audioRef.current.stop();
+          }
+          
+          // Clean up media tracks
+          if (audioRef.current.stream) {
+            audioRef.current.stream.getTracks().forEach(track => track.stop());
+          }
+        } catch (error) {
+          console.error("Error stopping audio recording:", error);
+        }
+        audioRef.current = null;
+      }
+      
+      // Reset the transcript when disconnecting
+      setRealtimeTranscript("");
+      
+      setConnectionState(SOCKET_STATES.closed);
+      console.log("Disconnected from Deepgram");
+    } catch (error) {
+      console.error("Error disconnecting from Deepgram:", error);
     }
-    if (audioRef.current) {
-      audioRef.current.stop();
-    }
-    setRealtimeTranscript("");
-    setConnectionState(SOCKET_STATES.closed);
   };
 
   return (

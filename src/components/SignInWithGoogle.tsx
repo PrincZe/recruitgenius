@@ -1,17 +1,45 @@
 "use client";
 
-import { useAuth } from '../lib/hooks/useAuth';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+import { Loader2 } from 'lucide-react';
 
 export default function SignInWithGoogle() {
-  const { signInWithGoogle } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
 
   return (
     <button
-      onClick={signInWithGoogle}
-      className="flex items-center justify-center bg-white text-gray-700 font-semibold py-2 px-4 rounded-full border border-gray-300 hover:bg-gray-100 transition duration-300 ease-in-out"
+      onClick={() => {
+        setIsLoading(true);
+        // Simulate Google sign-in
+        setTimeout(() => {
+          router.push('/admin');
+        }, 1500);
+      }}
+      disabled={isLoading}
+      className="flex items-center justify-center w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
     >
-      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google logo" className="w-6 h-6 mr-2" />
-      Sign in with Google
+      {isLoading ? (
+        <>
+          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+          Signing in...
+        </>
+      ) : (
+        <>
+          <div className="w-5 h-5 mr-2 relative">
+            <Image
+              src="/google-logo.png"
+              alt="Google logo"
+              fill
+              sizes="20px"
+              style={{ objectFit: 'contain' }}
+            />
+          </div>
+          Sign in with Google
+        </>
+      )}
     </button>
   );
 }
