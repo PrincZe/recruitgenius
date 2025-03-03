@@ -23,8 +23,79 @@ export default function TextToSpeech({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioDataRef = useRef<string | null>(null);
   const textRef = useRef<string>(text);
+  const webSpeechSynthRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const isStaticSite = useRef<boolean>(
+    typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')
+  );
 
-  // Define playAudio function first so it can be used in the useCallback
+  // Function to stop any existing speech synthesis
+  const stopWebSpeech = useCallback(() => {
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      if (webSpeechSynthRef.current) {
+        webSpeechSynthRef.current = null;
+      }
+    }
+  }, []);
+
+  // Web Speech API implementation - regular function, not a hook
+  const speakWithWebSpeechAPI = useCallback(() => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      console.error('Web Speech API not supported in this browser');
+      return false;
+    }
+    
+    try {
+      setIsLoading(true);
+      
+      // Cancel any ongoing speech
+      stopWebSpeech();
+      
+      // Create a new utterance
+      const utterance = new SpeechSynthesisUtterance(text);
+      webSpeechSynthRef.current = utterance;
+      
+      // Set up event handlers
+      utterance.onstart = () => {
+        setIsPlaying(true);
+        setIsLoading(false);
+        onPlaybackStarted?.();
+      };
+      
+      utterance.onend = () => {
+        setIsPlaying(false);
+        webSpeechSynthRef.current = null;
+        onPlaybackEnded?.();
+      };
+      
+      utterance.onerror = (event) => {
+        console.error('Speech synthesis error:', event);
+        setIsPlaying(false);
+        setIsLoading(false);
+        webSpeechSynthRef.current = null;
+      };
+      
+      // Set voice (try to use a neutral voice if available)
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        // Find a neutral or female voice if possible
+        const preferredVoice = voices.find(
+          v => v.name.includes('Google') || v.name.includes('Female') || v.name.includes('Samantha')
+        ) || voices[0];
+        utterance.voice = preferredVoice;
+      }
+      
+      // Speak the text
+      window.speechSynthesis.speak(utterance);
+      return true;
+    } catch (error) {
+      console.error('Error using Web Speech API:', error);
+      setIsLoading(false);
+      return false;
+    }
+  }, [text, onPlaybackStarted, onPlaybackEnded, stopWebSpeech]);
+
+  // Define playAudio function for the OpenAI TTS implementation
   const playAudio = useCallback(() => {
     if (!audioDataRef.current) return;
     
@@ -79,9 +150,19 @@ export default function TextToSpeech({
   // Memoize the convertTextToSpeech function to avoid dependency issues
   const convertTextToSpeech = useCallback(async () => {
     if (!text) return;
+    
+    // If we already have audio data, just play it
     if (audioDataRef.current) {
       playAudio();
       return;
+    }
+    
+    // For static sites or vercel.app domains, try Web Speech API first
+    if (isStaticSite.current) {
+      if (speakWithWebSpeechAPI()) {
+        return; // Web Speech API worked, we're done
+      }
+      // If Web Speech API failed, continue to OpenAI TTS as fallback
     }
 
     try {
@@ -104,10 +185,18 @@ export default function TextToSpeech({
       playAudio();
     } catch (error) {
       console.error('Error converting text to speech:', error);
+      // If OpenAI TTS fails and we haven't tried Web Speech yet, fall back to it
+      if (!isStaticSite.current) {
+        speakWithWebSpeechAPI();
+      } else {
+        setIsLoading(false);
+      }
     } finally {
-      setIsLoading(false);
+      if (audioDataRef.current) {
+        setIsLoading(false);
+      }
     }
-  }, [text, voice, playAudio]);
+  }, [text, voice, playAudio, speakWithWebSpeechAPI]);
 
   // Reset audio data when text changes
   useEffect(() => {
@@ -118,6 +207,9 @@ export default function TextToSpeech({
         audioRef.current.pause();
         audioRef.current = null;
       }
+      // Stop any web speech synthesis
+      stopWebSpeech();
+      
       textRef.current = text;
       
       // Auto-play if enabled
@@ -125,14 +217,25 @@ export default function TextToSpeech({
         convertTextToSpeech();
       }
     }
-  }, [text, autoPlay, convertTextToSpeech]);
+  }, [text, autoPlay, convertTextToSpeech, stopWebSpeech]);
 
   // Initial auto-play
   useEffect(() => {
-    if (autoPlay && text && !audioDataRef.current) {
+    if (autoPlay && text && !audioDataRef.current && !isPlaying) {
       convertTextToSpeech();
     }
-  }, [autoPlay, text, convertTextToSpeech]);
+  }, [autoPlay, text, convertTextToSpeech, isPlaying]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      stopWebSpeech();
+    };
+  }, [stopWebSpeech]);
 
   return (
     <button

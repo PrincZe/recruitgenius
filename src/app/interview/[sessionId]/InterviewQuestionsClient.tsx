@@ -139,7 +139,7 @@ export default function InterviewQuestionsClient({ params }: { params: { session
         id: params.sessionId, // Use the current sessionId from URL
         candidateId,
         questions: questions.map((q: Question) => q.id),
-        progress: 0,
+        progress: questionIndex, // Set progress to current question index
         isCompleted: false,
         createdAt: new Date().toISOString()
       };
@@ -147,10 +147,38 @@ export default function InterviewQuestionsClient({ params }: { params: { session
       // Save session to localStorage
       const sessionsData = localStorage.getItem('sessions');
       const sessions = sessionsData ? JSON.parse(sessionsData) : [];
-      sessions.push(newSession);
-      localStorage.setItem('sessions', JSON.stringify(sessions));
       
-      // Refresh the page to load the new session
+      // Remove any existing session with the same ID to avoid duplicates
+      const filteredSessions = sessions.filter((s: Session) => s.id !== params.sessionId);
+      filteredSessions.push(newSession);
+      localStorage.setItem('sessions', JSON.stringify(filteredSessions));
+      
+      // Also create empty recordings for previous questions if needed
+      const recordingsData = localStorage.getItem('recordings');
+      const recordings = recordingsData ? JSON.parse(recordingsData) : [];
+      
+      // Create dummy recordings for previous questions to allow navigation
+      if (questionIndex > 0) {
+        for (let i = 0; i < questionIndex; i++) {
+          const questionId = questions[i].id;
+          const existingRecording = recordings.find(
+            (r: any) => r.candidateId === candidateId && r.questionId === questionId
+          );
+          
+          if (!existingRecording) {
+            recordings.push({
+              audioUrl: "",
+              transcript: "Auto-generated response for demo",
+              candidateId: candidateId,
+              questionId: questionId,
+              createdAt: new Date().toISOString()
+            });
+          }
+        }
+        localStorage.setItem('recordings', JSON.stringify(recordings));
+      }
+      
+      // Reload the page to load the new session - but preserve the current hash to stay on the same question
       window.location.reload();
     } catch (error) {
       console.error('Error creating demo session:', error);
@@ -214,13 +242,60 @@ export default function InterviewQuestionsClient({ params }: { params: { session
     candidateId: string;
     questionId: string;
   }) => {
-    // Save recording to localStorage
-    const recordingsData = localStorage.getItem('recordings');
-    const recordings = recordingsData ? JSON.parse(recordingsData) : [];
-    recordings.push(data);
-    localStorage.setItem('recordings', JSON.stringify(recordings));
-    
-    setRecordingSubmitted(true);
+    try {
+      // Save recording to localStorage
+      const recordingsData = localStorage.getItem('recordings');
+      const recordings = recordingsData ? JSON.parse(recordingsData) : [];
+      
+      // Check if a recording for this question and candidate already exists
+      const existingIndex = recordings.findIndex(
+        (r: any) => r.candidateId === data.candidateId && r.questionId === data.questionId
+      );
+      
+      // Add timestamp to the recording data
+      const recordingWithTimestamp = {
+        ...data,
+        createdAt: new Date().toISOString()
+      };
+      
+      if (existingIndex >= 0) {
+        // Update existing recording
+        recordings[existingIndex] = recordingWithTimestamp;
+      } else {
+        // Add new recording
+        recordings.push(recordingWithTimestamp);
+      }
+      
+      // Save to localStorage
+      localStorage.setItem('recordings', JSON.stringify(recordings));
+      
+      // Update session progress if needed
+      if (session) {
+        const sessionsData = localStorage.getItem('sessions');
+        if (sessionsData) {
+          const sessions = JSON.parse(sessionsData);
+          const updatedSessions = sessions.map((s: Session) => {
+            if (s.id === session.id) {
+              return { 
+                ...s, 
+                progress: Math.max(s.progress, questionIndex + 1) 
+              };
+            }
+            return s;
+          });
+          
+          localStorage.setItem('sessions', JSON.stringify(updatedSessions));
+        }
+      }
+      
+      // Mark recording as submitted to enable the next button
+      setRecordingSubmitted(true);
+      
+      console.log('Recording saved successfully');
+    } catch (error) {
+      console.error('Error saving recording:', error);
+      alert('There was a problem saving your recording. Please try again.');
+    }
   };
 
   const handleCompleteInterview = async () => {
