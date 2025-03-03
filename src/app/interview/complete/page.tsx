@@ -33,8 +33,21 @@ const getCandidateById = async (id: string): Promise<Candidate | null> => {
 function HashRouter({ children }: { children: React.ReactNode }) {
   const [currentHash, setCurrentHash] = useState<string>('');
   const [isCompletePage, setIsCompletePage] = useState(false);
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
+    // Ensure local storage is accessible
+    try {
+      localStorage.getItem('test');
+      setInitialized(true);
+    } catch (error) {
+      console.error('Error accessing localStorage:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!initialized) return;
+    
     // Function to handle hash changes
     const handleHashChange = () => {
       const hash = window.location.hash;
@@ -58,7 +71,7 @@ function HashRouter({ children }: { children: React.ReactNode }) {
     return () => {
       window.removeEventListener('hashchange', handleHashChange);
     };
-  }, []);
+  }, [initialized]);
 
   // If we're on the complete page, render the complete content
   if (isCompletePage) {
@@ -86,7 +99,7 @@ function InterviewCompleteContent() {
       // Get sessions from localStorage
       const sessionsData = localStorage.getItem('sessions');
       if (!sessionsData) {
-        setError('No sessions found');
+        setError('No sessions found. Please complete an interview first.');
         setLoading(false);
         return;
       }
@@ -96,7 +109,25 @@ function InterviewCompleteContent() {
       // Get the most recently completed session
       const completedSessions = sessions.filter((s: Session) => s.isCompleted);
       if (completedSessions.length === 0) {
-        setError('No completed sessions found');
+        // Try to get the most recent session even if not completed
+        if (sessions.length > 0) {
+          // Sort by createdAt in descending order and get the most recent
+          const sortedSessions = sessions.sort((a: Session, b: Session) => 
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+          
+          const latestSession = sortedSessions[0];
+          setSession(latestSession);
+          
+          // Get candidate data
+          const candidateData = await getCandidateById(latestSession.candidateId);
+          setCandidate(candidateData);
+          
+          setLoading(false);
+          return;
+        }
+        
+        setError('No completed sessions found. Please complete an interview first.');
         setLoading(false);
         return;
       }

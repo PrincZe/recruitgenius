@@ -4,6 +4,29 @@ import { useState, useEffect } from 'react';
 import { Session, Question } from '@/lib/models/types';
 import TextToSpeech from '@/components/TextToSpeech';
 import VoiceRecorder from '@/components/VoiceRecorder';
+import { v4 as uuidv4 } from 'uuid';
+
+// Demo questions to use if none exist in localStorage
+const demoQuestions = [
+  {
+    id: "q1",
+    text: "Tell me about your background and experience.",
+    category: "Background",
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: "q2",
+    text: "What are your strengths and weaknesses?",
+    category: "Personal",
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: "q3",
+    text: "Describe a challenging situation you faced at work and how you handled it.",
+    category: "Experience",
+    createdAt: new Date().toISOString()
+  }
+];
 
 export default function InterviewQuestionsClient({ params }: { params: { sessionId: string } }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -33,7 +56,7 @@ export default function InterviewQuestionsClient({ params }: { params: { session
         // Get session data from localStorage
         const sessionsData = localStorage.getItem('sessions');
         if (!sessionsData) {
-          setError('No sessions found');
+          setError('No sessions found. Would you like to create a demo session?');
           setLoading(false);
           return;
         }
@@ -42,7 +65,7 @@ export default function InterviewQuestionsClient({ params }: { params: { session
         const session = sessions.find((s: Session) => s.id === params.sessionId);
         
         if (!session) {
-          setError('Session not found');
+          setError('Session not found. Would you like to create a demo session?');
           setLoading(false);
           return;
         }
@@ -52,7 +75,7 @@ export default function InterviewQuestionsClient({ params }: { params: { session
         // Get questions data
         const questionsData = localStorage.getItem('questions');
         if (!questionsData) {
-          setError('No questions found');
+          setError('No questions found. Would you like to create demo questions?');
           setLoading(false);
           return;
         }
@@ -67,22 +90,73 @@ export default function InterviewQuestionsClient({ params }: { params: { session
           if (question) {
             setCurrentQuestion(question);
           } else {
-            setError('Question not found');
+            setError('Question not found. Would you like to create demo questions?');
           }
         } else {
-          setError('Invalid question index');
+          setError('Invalid question index. Would you like to create a demo session?');
         }
 
         setLoading(false);
       } catch (error) {
         console.error('Error fetching session data:', error);
-        setError('An error occurred while loading the interview. Please try again.');
+        setError('An error occurred while loading the interview. Would you like to create a demo session?');
         setLoading(false);
       }
     };
     
     fetchSessionData();
   }, [params.sessionId, questionIndex]);
+
+  const createDemoSession = () => {
+    try {
+      // Create demo questions if needed
+      const questionsData = localStorage.getItem('questions');
+      if (!questionsData || JSON.parse(questionsData).length === 0) {
+        localStorage.setItem('questions', JSON.stringify(demoQuestions));
+        console.log('Added demo questions to localStorage');
+      }
+      
+      // Use existing questions or demo questions
+      const questions = questionsData ? JSON.parse(questionsData) : demoQuestions;
+      
+      // Create a demo candidate
+      const candidateId = uuidv4();
+      const candidate = {
+        id: candidateId,
+        name: "Demo User",
+        email: "demo@example.com",
+        createdAt: new Date().toISOString()
+      };
+      
+      // Save candidate to localStorage
+      const candidatesData = localStorage.getItem('candidates');
+      const candidates = candidatesData ? JSON.parse(candidatesData) : [];
+      candidates.push(candidate);
+      localStorage.setItem('candidates', JSON.stringify(candidates));
+      
+      // Create a new session
+      const newSession: Session = {
+        id: params.sessionId, // Use the current sessionId from URL
+        candidateId,
+        questions: questions.map((q: Question) => q.id),
+        progress: 0,
+        isCompleted: false,
+        createdAt: new Date().toISOString()
+      };
+      
+      // Save session to localStorage
+      const sessionsData = localStorage.getItem('sessions');
+      const sessions = sessionsData ? JSON.parse(sessionsData) : [];
+      sessions.push(newSession);
+      localStorage.setItem('sessions', JSON.stringify(sessions));
+      
+      // Refresh the page to load the new session
+      window.location.reload();
+    } catch (error) {
+      console.error('Error creating demo session:', error);
+      setError('Failed to create demo session. Please try refreshing the page.');
+    }
+  };
 
   const handleNextQuestion = () => {
     if (!session) return;
@@ -185,12 +259,20 @@ export default function InterviewQuestionsClient({ params }: { params: { session
         <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 max-w-md">
           <h3 className="text-lg font-medium mb-2">Error</h3>
           <p>{error}</p>
-          <button 
-            onClick={() => window.location.href = '/interview'}
-            className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-          >
-            Return to Start
-          </button>
+          <div className="mt-4 flex space-x-4">
+            <button 
+              onClick={createDemoSession}
+              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+            >
+              Create Demo Session
+            </button>
+            <button 
+              onClick={() => window.location.href = '/interview'}
+              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+            >
+              Return to Start
+            </button>
+          </div>
         </div>
       </div>
     );

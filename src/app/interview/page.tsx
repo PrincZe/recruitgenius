@@ -32,8 +32,28 @@ const demoQuestions = [
 function HashRouter({ children }: { children: React.ReactNode }) {
   const [currentHash, setCurrentHash] = useState<string>('');
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
+    // Initialize localStorage with demo data if needed
+    const ensureLocalStorageData = () => {
+      // Check if questions exist in localStorage
+      const questionsData = localStorage.getItem('questions');
+      if (!questionsData || JSON.parse(questionsData).length === 0) {
+        // If no questions exist, add demo questions
+        localStorage.setItem('questions', JSON.stringify(demoQuestions));
+        console.log('Added demo questions to localStorage');
+      }
+      
+      setInitialized(true);
+    };
+    
+    ensureLocalStorageData();
+  }, []);
+
+  useEffect(() => {
+    if (!initialized) return;
+    
     // Function to handle hash changes
     const handleHashChange = () => {
       const hash = window.location.hash;
@@ -59,7 +79,7 @@ function HashRouter({ children }: { children: React.ReactNode }) {
     return () => {
       window.removeEventListener('hashchange', handleHashChange);
     };
-  }, []);
+  }, [initialized]);
 
   // If we have a sessionId, render the interview questions
   if (sessionId) {
@@ -75,7 +95,6 @@ export default function InterviewStartPage() {
   const [email, setEmail] = useState('');
   const router = useRouter();
   
-  // Initialize localStorage with demo data if needed
   useEffect(() => {
     // Check if questions exist in localStorage
     const questionsData = localStorage.getItem('questions');
@@ -114,8 +133,9 @@ export default function InterviewStartPage() {
       localStorage.setItem('candidates', JSON.stringify(candidates));
 
       // Create a new session
+      const sessionId = uuidv4();
       const session: Session = {
-        id: uuidv4(),
+        id: sessionId,
         candidateId,
         questions: questions.map((q: Question) => q.id),
         progress: 0,
