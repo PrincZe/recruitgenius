@@ -211,15 +211,36 @@ export default function InterviewQuestionsClient({ params }: { params: { session
         console.log(`Added dummy recordings for previous questions`);
       }
       
-      // Return the new session and current question
-      return {
-        session: newSession,
-        currentQuestion: questions[questionIndex]
-      };
+      // Get the current question
+      const currentQuestionId = questions[questionIndex]?.id;
+      if (!currentQuestionId) {
+        throw new Error('No question found at the current index');
+      }
+      
+      const currentQuestion = questions.find((q: Question) => q.id === currentQuestionId);
+      if (!currentQuestion) {
+        throw new Error('Question not found');
+      }
+      
+      // Update state immediately
+      setSession(newSession);
+      setCurrentQuestion(currentQuestion);
+      setLoading(false);
+      setError(null);
+      setRecordingSubmitted(false);
+      
+      console.log(`Successfully created and loaded demo session with question: ${currentQuestion.text}`);
+      
+      // Force a reload to ensure everything is fresh
+      // This helps prevent issues with components not re-rendering properly
+      window.location.reload();
+      
+      return true;
     } catch (error) {
       console.error('Error creating demo session:', error);
       setError('Failed to create demo session. Please try refreshing the page.');
-      return null;
+      setLoading(false);
+      return false;
     }
   };
 
@@ -376,11 +397,9 @@ export default function InterviewQuestionsClient({ params }: { params: { session
       } else {
         console.error('No session found when trying to update progress');
         // Try to recreate session if it's missing
-        const result = createDemoSession();
-        if (result) {
-          setSession(result.session);
-          setCurrentQuestion(result.currentQuestion);
-        }
+        createDemoSession();
+        // Note: No need to set session or currentQuestion here as createDemoSession 
+        // either updates state directly or forces a page reload
       }
       
       // Mark question as submitted

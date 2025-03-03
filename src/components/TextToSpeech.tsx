@@ -20,6 +20,7 @@ export default function TextToSpeech({
 }: TextToSpeechProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioDataRef = useRef<string | null>(null);
   const textRef = useRef<string>(text);
@@ -34,6 +35,7 @@ export default function TextToSpeech({
       
       audioRef.current.addEventListener('play', () => {
         setIsPlaying(true);
+        setIsLoading(false); // Ensure loading is set to false when audio starts playing
         onPlaybackStarted?.();
       });
       
@@ -50,6 +52,7 @@ export default function TextToSpeech({
         console.error('Audio playback error:', e);
         setIsPlaying(false);
         setIsLoading(false);
+        setError('Failed to play audio. Please try again.');
         // Clear the audio data to force a reload next time
         audioDataRef.current = null;
         audioRef.current = null;
@@ -64,6 +67,7 @@ export default function TextToSpeech({
         console.error('Error playing audio:', error);
         setIsPlaying(false);
         setIsLoading(false);
+        setError('Failed to play audio. Please try again.');
         // Clear the audio data to force a reload next time
         audioDataRef.current = null;
         audioRef.current = null;
@@ -72,6 +76,7 @@ export default function TextToSpeech({
       console.error('Error playing audio:', error);
       setIsPlaying(false);
       setIsLoading(false);
+      setError('Failed to play audio. Please try again.');
       // Clear the audio data to force a reload next time
       audioDataRef.current = null;
       audioRef.current = null;
@@ -89,6 +94,7 @@ export default function TextToSpeech({
     }
     
     try {
+      setError(null);
       setIsLoading(true);
       const response = await fetch('/api/openai/tts', {
         method: 'POST',
@@ -103,14 +109,27 @@ export default function TextToSpeech({
       }
 
       const data = await response.json();
-      audioDataRef.current = data.audio;
+      if (!data.audio) {
+        throw new Error('No audio data received from API');
+      }
       
+      audioDataRef.current = data.audio;
       playAudio();
+      
+      // Set a timeout to reset loading state if it gets stuck
+      setTimeout(() => {
+        if (isLoading) {
+          console.log('Loading state was stuck, resetting');
+          setIsLoading(false);
+        }
+      }, 5000);
+      
     } catch (error) {
       console.error('Error with OpenAI TTS:', error);
       setIsLoading(false);
+      setError(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }, [text, voice, playAudio]);
+  }, [text, voice, playAudio, isLoading]);
 
   // Reset audio data when text changes
   useEffect(() => {
@@ -121,7 +140,7 @@ export default function TextToSpeech({
         audioRef.current.pause();
         audioRef.current = null;
       }
-      
+      setError(null);
       textRef.current = text;
       
       // Auto-play if enabled
@@ -158,6 +177,7 @@ export default function TextToSpeech({
       setIsPlaying(false);
     } else {
       // If not playing, start playing
+      setError(null);
       convertTextToSpeech();
     }
   };
@@ -179,6 +199,9 @@ export default function TextToSpeech({
       <span className="text-sm text-gray-500">
         {isLoading ? "Loading audio..." : isPlaying ? "Playing" : "Click to play"}
       </span>
+      {error && (
+        <span className="text-sm text-red-500 ml-2">{error}</span>
+      )}
     </div>
   );
 } 
