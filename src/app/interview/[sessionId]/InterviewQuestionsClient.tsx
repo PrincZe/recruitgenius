@@ -336,9 +336,11 @@ export default function InterviewQuestionsClient({ params }: { params: { session
           });
         }
         
+        // Reset recording state for the new question
+        setRecordingSubmitted(false);
+        
         // Update local state to avoid loading issues
         setQuestionIndex(nextIndex);
-        setRecordingSubmitted(false);
         
         // Update URL with hash-based routing (after state update)
         const newHash = `interview/${params.sessionId}?q=${nextIndex}`;
@@ -355,6 +357,25 @@ export default function InterviewQuestionsClient({ params }: { params: { session
           if (nextQuestion) {
             console.log(`Setting next question: ${nextQuestion.text}`);
             setCurrentQuestion(nextQuestion);
+            
+            // Important: Check if this question has been submitted already
+            const recordingsData = localStorage.getItem('recordings');
+            if (recordingsData) {
+              const recordings = JSON.parse(recordingsData);
+              const existingRecording = recordings.find(
+                (r: any) => r.candidateId === session.candidateId && r.questionId === nextQuestionId
+              );
+              
+              if (existingRecording) {
+                console.log(`Found existing recording for question ${nextQuestionId}, marking as submitted`);
+                setRecordingSubmitted(true);
+              } else {
+                console.log(`No existing recording found for question ${nextQuestionId}`);
+                setRecordingSubmitted(false);
+              }
+            } else {
+              setRecordingSubmitted(false);
+            }
           } else {
             console.error(`Next question (ID: ${nextQuestionId}) not found`);
             setError('Error loading next question. Please try again.');
@@ -371,33 +392,56 @@ export default function InterviewQuestionsClient({ params }: { params: { session
   };
 
   const handlePreviousQuestion = () => {
-    if (!session) return;
+    if (!session || questionIndex <= 0) return;
     
-    if (questionIndex > 0) {
-      try {
-        const prevIndex = questionIndex - 1;
+    const prevIndex = questionIndex - 1;
+    
+    try {
+      console.log(`Navigating to previous question (index: ${prevIndex})`);
+      
+      // Reset recording state for the new question
+      setRecordingSubmitted(false);
+      
+      // Update local state
+      setQuestionIndex(prevIndex);
+      
+      // Update URL with hash-based routing
+      const newHash = `interview/${params.sessionId}?q=${prevIndex}`;
+      console.log(`Setting new URL hash: ${newHash}`);
+      window.location.hash = newHash;
+      
+      // Fetch the previous question
+      const questionsData = localStorage.getItem('questions');
+      if (questionsData) {
+        const questions = JSON.parse(questionsData);
+        const prevQuestionId = session.questions[prevIndex];
+        const prevQuestion = questions.find((q: Question) => q.id === prevQuestionId);
         
-        // Update URL with hash-based routing
-        window.location.hash = `interview/${params.sessionId}?q=${prevIndex}`;
-        // Update local state to avoid a full page refresh
-        setQuestionIndex(prevIndex);
-        setRecordingSubmitted(true); // Assume previous questions are already recorded
-        
-        // Fetch the previous question
-        const questionsData = localStorage.getItem('questions');
-        if (questionsData) {
-          const questions = JSON.parse(questionsData);
-          const questionId = session.questions[prevIndex];
-          const question = questions.find((q: Question) => q.id === questionId);
+        if (prevQuestion) {
+          console.log(`Setting previous question: ${prevQuestion.text}`);
+          setCurrentQuestion(prevQuestion);
           
-          if (question) {
-            setCurrentQuestion(question);
+          // Check if this question has been submitted already
+          const recordingsData = localStorage.getItem('recordings');
+          if (recordingsData) {
+            const recordings = JSON.parse(recordingsData);
+            const existingRecording = recordings.find(
+              (r: any) => r.candidateId === session.candidateId && r.questionId === prevQuestionId
+            );
+            
+            if (existingRecording) {
+              console.log(`Found existing recording for question ${prevQuestionId}, marking as submitted`);
+              setRecordingSubmitted(true);
+            } else {
+              console.log(`No existing recording found for question ${prevQuestionId}`);
+              setRecordingSubmitted(false);
+            }
           }
         }
-      } catch (error) {
-        console.error('Error navigating to previous question:', error);
-        alert('There was a problem navigating to the previous question. Please try again.');
       }
+    } catch (error) {
+      console.error('Error navigating to previous question:', error);
+      alert('There was a problem navigating to the previous question. Please try again.');
     }
   };
 
