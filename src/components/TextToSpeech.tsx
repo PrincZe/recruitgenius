@@ -20,6 +20,7 @@ export default function TextToSpeech({
 }: TextToSpeechProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [useOpenAI, setUseOpenAI] = useState(true); // Default to using OpenAI
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioDataRef = useRef<string | null>(null);
   const textRef = useRef<string>(text);
@@ -85,7 +86,8 @@ export default function TextToSpeech({
         utterance.voice = preferredVoice;
       }
       
-      // Speak the text
+      // Only speak once, prevent looping
+      window.speechSynthesis.cancel(); // Clear any existing speech
       window.speechSynthesis.speak(utterance);
       return true;
     } catch (error) {
@@ -129,10 +131,14 @@ export default function TextToSpeech({
     
     // Play the audio
     try {
+      // Reset the audio to the beginning to prevent looping issues
+      audioRef.current.currentTime = 0;
       audioRef.current.play().catch(error => {
         console.error('Error playing audio:', error);
         setIsPlaying(false);
         setIsLoading(false);
+        // If OpenAI TTS fails, fall back to Web Speech
+        setUseOpenAI(false);
         // Clear the audio data to force a reload next time
         audioDataRef.current = null;
         audioRef.current = null;
@@ -141,11 +147,33 @@ export default function TextToSpeech({
       console.error('Error playing audio:', error);
       setIsPlaying(false);
       setIsLoading(false);
+      // If OpenAI TTS fails, fall back to Web Speech
+      setUseOpenAI(false);
       // Clear the audio data to force a reload next time
       audioDataRef.current = null;
       audioRef.current = null;
     }
   }, [onPlaybackStarted, onPlaybackEnded]);
+
+  // Check if we can use OpenAI TTS
+  useEffect(() => {
+    const checkOpenAITTS = async () => {
+      try {
+        // Try to fetch just the status to see if the API is accessible
+        const response = await fetch('/api/openai/tts', {
+          method: 'HEAD'
+        });
+        
+        // If we get a response (even an error), assume OpenAI TTS is available
+        setUseOpenAI(response.status !== 404);
+      } catch (error) {
+        console.warn('Could not access OpenAI TTS API, falling back to Web Speech API:', error);
+        setUseOpenAI(false);
+      }
+    };
+    
+    checkOpenAITTS();
+  }, []);
 
   // Memoize the convertTextToSpeech function to avoid dependency issues
   const convertTextToSpeech = useCallback(async () => {
@@ -157,46 +185,38 @@ export default function TextToSpeech({
       return;
     }
     
-    // For static sites or vercel.app domains, try Web Speech API first
-    if (isStaticSite.current) {
-      if (speakWithWebSpeechAPI()) {
-        return; // Web Speech API worked, we're done
-      }
-      // If Web Speech API failed, continue to OpenAI TTS as fallback
-    }
+    // Try OpenAI TTS first if enabled
+    if (useOpenAI) {
+      try {
+        setIsLoading(true);
+        const response = await fetch('/api/openai/tts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ text, voice }),
+        });
 
-    try {
-      setIsLoading(true);
-      const response = await fetch('/api/openai/tts', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ text, voice }),
-      });
+        if (!response.ok) {
+          throw new Error('Failed to convert text to speech');
+        }
 
-      if (!response.ok) {
-        throw new Error('Failed to convert text to speech');
-      }
-
-      const data = await response.json();
-      audioDataRef.current = data.audio;
-      
-      playAudio();
-    } catch (error) {
-      console.error('Error converting text to speech:', error);
-      // If OpenAI TTS fails and we haven't tried Web Speech yet, fall back to it
-      if (!isStaticSite.current) {
-        speakWithWebSpeechAPI();
-      } else {
-        setIsLoading(false);
-      }
-    } finally {
-      if (audioDataRef.current) {
-        setIsLoading(false);
+        const data = await response.json();
+        audioDataRef.current = data.audio;
+        
+        playAudio();
+        return;
+      } catch (error) {
+        console.error('Error with OpenAI TTS, falling back to Web Speech API:', error);
+        // If OpenAI fails, mark it as unavailable
+        setUseOpenAI(false);
+        // Continue to Web Speech API fallback
       }
     }
-  }, [text, voice, playAudio, speakWithWebSpeechAPI]);
+    
+    // Fall back to Web Speech API
+    speakWithWebSpeechAPI();
+  }, [text, voice, playAudio, speakWithWebSpeechAPI, useOpenAI]);
 
   // Reset audio data when text changes
   useEffect(() => {

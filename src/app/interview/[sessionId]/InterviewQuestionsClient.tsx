@@ -52,47 +52,63 @@ export default function InterviewQuestionsClient({ params }: { params: { session
       try {
         setLoading(true);
         setError(null);
+        
+        console.log(`Attempting to fetch session data for ID: ${params.sessionId}, Question index: ${questionIndex}`);
 
         // Get session data from localStorage
         const sessionsData = localStorage.getItem('sessions');
         if (!sessionsData) {
+          console.error('No sessions found in localStorage');
           setError('No sessions found. Would you like to create a demo session?');
           setLoading(false);
           return;
         }
 
         const sessions = JSON.parse(sessionsData);
+        console.log(`Found ${sessions.length} sessions in localStorage`);
+        
         const session = sessions.find((s: Session) => s.id === params.sessionId);
         
         if (!session) {
+          console.error(`Session with ID ${params.sessionId} not found in ${sessions.length} available sessions`);
+          // Log the first few session IDs to help debug
+          console.log('Available session IDs:', sessions.map((s: Session) => s.id).slice(0, 3));
           setError('Session not found. Would you like to create a demo session?');
           setLoading(false);
           return;
         }
 
+        console.log(`Found session: ${session.id}, Progress: ${session.progress}, Questions: ${session.questions.length}`);
         setSession(session);
 
         // Get questions data
         const questionsData = localStorage.getItem('questions');
         if (!questionsData) {
+          console.error('No questions found in localStorage');
           setError('No questions found. Would you like to create demo questions?');
           setLoading(false);
           return;
         }
 
         const questions = JSON.parse(questionsData);
+        console.log(`Found ${questions.length} questions in localStorage`);
         
         // Get current question based on query parameter
         if (session.questions.length > questionIndex) {
           const questionId = session.questions[questionIndex];
+          console.log(`Looking for question ID: ${questionId} at index ${questionIndex}`);
+          
           const question = questions.find((q: Question) => q.id === questionId);
           
           if (question) {
+            console.log(`Found question: ${question.text}`);
             setCurrentQuestion(question);
           } else {
+            console.error(`Question with ID ${questionId} not found`);
             setError('Question not found. Would you like to create demo questions?');
           }
         } else {
+          console.error(`Question index ${questionIndex} out of bounds (max: ${session.questions.length - 1})`);
           setError('Invalid question index. Would you like to create a demo session?');
         }
 
@@ -109,6 +125,8 @@ export default function InterviewQuestionsClient({ params }: { params: { session
 
   const createDemoSession = () => {
     try {
+      console.log(`Creating a demo session with ID: ${params.sessionId}`);
+      
       // Create demo questions if needed
       const questionsData = localStorage.getItem('questions');
       if (!questionsData || JSON.parse(questionsData).length === 0) {
@@ -118,6 +136,7 @@ export default function InterviewQuestionsClient({ params }: { params: { session
       
       // Use existing questions or demo questions
       const questions = questionsData ? JSON.parse(questionsData) : demoQuestions;
+      console.log(`Using ${questions.length} questions for demo session`);
       
       // Create a demo candidate
       const candidateId = uuidv4();
@@ -133,6 +152,7 @@ export default function InterviewQuestionsClient({ params }: { params: { session
       const candidates = candidatesData ? JSON.parse(candidatesData) : [];
       candidates.push(candidate);
       localStorage.setItem('candidates', JSON.stringify(candidates));
+      console.log(`Added demo candidate with ID: ${candidateId}`);
       
       // Create a new session
       const newSession: Session = {
@@ -152,6 +172,7 @@ export default function InterviewQuestionsClient({ params }: { params: { session
       const filteredSessions = sessions.filter((s: Session) => s.id !== params.sessionId);
       filteredSessions.push(newSession);
       localStorage.setItem('sessions', JSON.stringify(filteredSessions));
+      console.log(`Created demo session and saved to localStorage. Total sessions: ${filteredSessions.length}`);
       
       // Also create empty recordings for previous questions if needed
       const recordingsData = localStorage.getItem('recordings');
@@ -176,9 +197,26 @@ export default function InterviewQuestionsClient({ params }: { params: { session
           }
         }
         localStorage.setItem('recordings', JSON.stringify(recordings));
+        console.log(`Created ${questionIndex} dummy recordings for previous questions`);
       }
       
-      // Reload the page to load the new session - but preserve the current hash to stay on the same question
+      // Apply the changes directly to the state instead of reloading
+      setSession(newSession);
+      
+      // Get the current question
+      if (questions.length > questionIndex) {
+        const question = questions[questionIndex];
+        if (question) {
+          setCurrentQuestion(question);
+          setError(null);
+          setLoading(false);
+          console.log(`Set current question: ${question.text}`);
+          return;
+        }
+      }
+      
+      // If we couldn't set the question directly, reload as a fallback
+      console.log('Reloading page to refresh with new session data...');
       window.location.reload();
     } catch (error) {
       console.error('Error creating demo session:', error);
@@ -192,21 +230,44 @@ export default function InterviewQuestionsClient({ params }: { params: { session
     const nextIndex = questionIndex + 1;
     
     if (nextIndex < session.questions.length) {
-      // Update URL with hash-based routing
-      window.location.hash = `interview/${params.sessionId}?q=${nextIndex}`;
-      setQuestionIndex(nextIndex);
-      setRecordingSubmitted(false);
-      
-      // Fetch the next question
-      const questionsData = localStorage.getItem('questions');
-      if (questionsData) {
-        const questions = JSON.parse(questionsData);
-        const questionId = session.questions[nextIndex];
-        const question = questions.find((q: Question) => q.id === questionId);
-        
-        if (question) {
-          setCurrentQuestion(question);
+      try {
+        // Save current progress to localStorage before navigating
+        const sessionsData = localStorage.getItem('sessions');
+        if (sessionsData) {
+          const sessions = JSON.parse(sessionsData);
+          const updatedSessions = sessions.map((s: Session) => {
+            if (s.id === session.id) {
+              return { 
+                ...s, 
+                progress: Math.max(s.progress, nextIndex) 
+              };
+            }
+            return s;
+          });
+          
+          localStorage.setItem('sessions', JSON.stringify(updatedSessions));
         }
+        
+        // Update URL with hash-based routing
+        window.location.hash = `interview/${params.sessionId}?q=${nextIndex}`;
+        // Update local state to avoid a full page refresh
+        setQuestionIndex(nextIndex);
+        setRecordingSubmitted(false);
+        
+        // Fetch the next question
+        const questionsData = localStorage.getItem('questions');
+        if (questionsData) {
+          const questions = JSON.parse(questionsData);
+          const questionId = session.questions[nextIndex];
+          const question = questions.find((q: Question) => q.id === questionId);
+          
+          if (question) {
+            setCurrentQuestion(question);
+          }
+        }
+      } catch (error) {
+        console.error('Error navigating to next question:', error);
+        alert('There was a problem navigating to the next question. Please try again.');
       }
     } else {
       // All questions completed
@@ -215,23 +276,32 @@ export default function InterviewQuestionsClient({ params }: { params: { session
   };
 
   const handlePreviousQuestion = () => {
+    if (!session) return;
+    
     if (questionIndex > 0) {
-      const prevIndex = questionIndex - 1;
-      // Update URL with hash-based routing
-      window.location.hash = `interview/${params.sessionId}?q=${prevIndex}`;
-      setQuestionIndex(prevIndex);
-      setRecordingSubmitted(false);
-      
-      // Fetch the previous question
-      const questionsData = localStorage.getItem('questions');
-      if (questionsData) {
-        const questions = JSON.parse(questionsData);
-        const questionId = session?.questions[prevIndex];
-        const question = questions.find((q: Question) => q.id === questionId);
+      try {
+        const prevIndex = questionIndex - 1;
         
-        if (question) {
-          setCurrentQuestion(question);
+        // Update URL with hash-based routing
+        window.location.hash = `interview/${params.sessionId}?q=${prevIndex}`;
+        // Update local state to avoid a full page refresh
+        setQuestionIndex(prevIndex);
+        setRecordingSubmitted(true); // Assume previous questions are already recorded
+        
+        // Fetch the previous question
+        const questionsData = localStorage.getItem('questions');
+        if (questionsData) {
+          const questions = JSON.parse(questionsData);
+          const questionId = session.questions[prevIndex];
+          const question = questions.find((q: Question) => q.id === questionId);
+          
+          if (question) {
+            setCurrentQuestion(question);
+          }
         }
+      } catch (error) {
+        console.error('Error navigating to previous question:', error);
+        alert('There was a problem navigating to the previous question. Please try again.');
       }
     }
   };
