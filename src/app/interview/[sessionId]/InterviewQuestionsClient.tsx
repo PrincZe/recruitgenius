@@ -5,8 +5,9 @@ import { Session, Question } from '@/lib/models/types';
 import TextToSpeech from '@/components/TextToSpeech';
 import VoiceRecorder from '@/components/VoiceRecorder';
 import { v4 as uuidv4 } from 'uuid';
+import { getSessionById, getQuestions, getQuestionById } from '@/lib/services/supabaseService';
 
-// Demo questions to use if none exist in localStorage
+// Demo questions to use if none exist in Supabase
 const demoQuestions = [
   {
     id: uuidv4(), // Use UUID format for compatibility with Supabase
@@ -38,85 +39,59 @@ export default function InterviewQuestionsClient({ params }: { params: { session
   const [questionIndex, setQuestionIndex] = useState(0);
   const [candidateId, setCandidateId] = useState<string | null>(null);
 
-  // Define fetchSessionData outside of useEffect
-  const fetchSessionData = () => {
+  // Define fetchSessionData as an async function to get data from Supabase
+  const fetchSessionData = async () => {
     setLoading(true);
     setError(null);
     
     console.log(`Attempting to fetch session data for ID: ${params.sessionId}, Question index: ${questionIndex}`);
 
-    // Get session data from localStorage
-    const sessionsData = localStorage.getItem('sessions');
-    if (!sessionsData) {
-      console.error('No sessions found in localStorage');
-      setError('No sessions found. Would you like to create a demo session?');
-      setLoading(false);
-      return;
-    }
-
-    const sessions = JSON.parse(sessionsData);
-    console.log(`Found ${sessions.length} sessions in localStorage`);
-    
-    // Log all available session IDs for debugging
-    console.log('Available session IDs:', sessions.map((s: Session) => s.id));
-    
-    // Find the session by ID - make sure to trim any whitespace
-    const sessionId = params.sessionId.trim();
-    const session = sessions.find((s: Session) => s.id.trim() === sessionId);
-    
-    if (!session) {
-      console.error(`Session with ID ${sessionId} not found in ${sessions.length} available sessions`);
+    try {
+      // Get session data from Supabase
+      const sessionData = await getSessionById(params.sessionId);
       
-      // Check if this is a new session ID or if we need to recover
-      // If there are existing sessions and the URL has a hash with 'interview/', attempt recovery
-      if (sessions.length > 0 && window.location.hash.includes('interview/')) {
-        console.log('Attempting to recover using the most recent session');
-        
-        // Sort sessions by createdAt (most recent first)
-        const sortedSessions = [...sessions].sort((a, b) => 
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-        
-        // Use the most recent session
-        const mostRecentSession = sortedSessions[0];
-        console.log(`Recovering with session ID: ${mostRecentSession.id}`);
-        
-        // Update the URL to match the session we found
-        window.location.hash = `interview/${mostRecentSession.id}?q=${questionIndex}`;
-        
-        // Continue with this session instead
-        setSession(mostRecentSession);
-        // Set the current question based on the question index
-        if (mostRecentSession.questions && questionIndex < mostRecentSession.questions.length) {
-          const questionId = mostRecentSession.questions[questionIndex];
-          const question = demoQuestions.find(q => q.id === questionId);
-          if (question) {
-            setCurrentQuestion(question);
-          }
-        }
+      if (!sessionData) {
+        console.error(`No session found with ID: ${params.sessionId}`);
+        setError('Session not found. Would you like to create a demo session?');
+        setLoading(false);
         return;
       }
       
-      setError('Session not found. Would you like to create a demo session?');
-      setLoading(false);
-      return;
-    }
-
-    console.log(`Found session: ${session.id}, Progress: ${session.progress}, Questions: ${session.questions.length}`);
-    setSession(session);
-    
-    // Set the current question based on the session
-    if (session.questions && questionIndex < session.questions.length) {
-      const questionId = session.questions[questionIndex];
-      const question = demoQuestions.find(q => q.id === questionId);
-      if (question) {
-        setCurrentQuestion(question);
+      console.log(`Found session: ${sessionData.id}, Progress: ${sessionData.progress}, Questions: ${sessionData.questions.length}`);
+      setSession(sessionData);
+      setCandidateId(sessionData.candidateId);
+      
+      // Get the current question based on the question index
+      if (sessionData.questions && questionIndex < sessionData.questions.length) {
+        const questionId = sessionData.questions[questionIndex];
+        try {
+          // Try to get the question from Supabase
+          const question = await getQuestionById(questionId);
+          
+          if (question) {
+            setCurrentQuestion(question);
+          } else {
+            // If question not found in Supabase, check demo questions
+            const demoQuestion = demoQuestions.find(q => q.id === questionId);
+            if (demoQuestion) {
+              setCurrentQuestion(demoQuestion);
+            } else {
+              setError(`Question not found. ID: ${questionId}`);
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching question with ID ${questionId}:`, error);
+          setError('Error loading question. Please try again.');
+        }
       } else {
-        console.error(`Question with ID ${questionId} not found`);
+        setError(`Invalid question index: ${questionIndex}`);
       }
+    } catch (error) {
+      console.error('Error fetching session data:', error);
+      setError('Error loading session. Would you like to create a demo session?');
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -141,6 +116,40 @@ export default function InterviewQuestionsClient({ params }: { params: { session
       fetchSessionData();
     }
   }, [params.sessionId]);
+
+  // Also fetch session data when questionIndex changes
+  useEffect(() => {
+    if (params.sessionId && params.sessionId !== 'demo-session' && session) {
+      // We only want to fetch new question data, not the entire session again
+      if (session.questions && questionIndex < session.questions.length) {
+        const questionId = session.questions[questionIndex];
+        
+        const fetchQuestionData = async () => {
+          setLoading(true);
+          try {
+            const question = await getQuestionById(questionId);
+            if (question) {
+              setCurrentQuestion(question);
+            } else {
+              const demoQuestion = demoQuestions.find(q => q.id === questionId);
+              if (demoQuestion) {
+                setCurrentQuestion(demoQuestion);
+              } else {
+                setError(`Question not found. ID: ${questionId}`);
+              }
+            }
+          } catch (error) {
+            console.error(`Error fetching question with ID ${questionId}:`, error);
+            setError('Error loading question. Please try again.');
+          } finally {
+            setLoading(false);
+          }
+        };
+        
+        fetchQuestionData();
+      }
+    }
+  }, [questionIndex, session]);
 
   // Function to create a demo session
   const createDemoSession = () => {
