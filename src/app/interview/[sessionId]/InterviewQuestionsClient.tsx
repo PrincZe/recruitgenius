@@ -322,14 +322,17 @@ export default function InterviewQuestionsClient({ params }: { params: { session
     }
   };
 
-  const handleRecordingComplete = (data: {
+  const handleRecordingComplete = async (data: {
     audioUrl: string;
-    transcript: string;
+    transcript: string | null; // Updated to allow null
     candidateId: string;
     questionId: string;
   }) => {
     try {
       console.log(`Saving recording for question: ${data.questionId}`);
+
+      // Ensure transcript is a string (not null)
+      const safeTranscript = data.transcript || '';
       
       // Save recording to localStorage
       const recordingsData = localStorage.getItem('recordings');
@@ -343,6 +346,7 @@ export default function InterviewQuestionsClient({ params }: { params: { session
       // Add timestamp to the recording data
       const recordingWithTimestamp = {
         ...data,
+        transcript: safeTranscript, // Use non-null transcript
         createdAt: new Date().toISOString()
       };
       
@@ -390,12 +394,6 @@ export default function InterviewQuestionsClient({ params }: { params: { session
             };
           });
         }
-      } else {
-        console.error('No session found when trying to update progress');
-        // Try to recreate session if it's missing
-        createDemoSession();
-        // Note: No need to set session or currentQuestion here as createDemoSession 
-        // either updates state directly or forces a page reload
       }
       
       // Mark question as submitted
@@ -403,8 +401,8 @@ export default function InterviewQuestionsClient({ params }: { params: { session
       console.log(`Marked question as submitted`);
       
     } catch (error) {
-      console.error('Error saving recording:', error);
-      alert('There was an issue saving your recording. Please try again.');
+      console.error('Error handling recording complete:', error);
+      setError('Failed to save recording. Please try again.');
     }
   };
 
