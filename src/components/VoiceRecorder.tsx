@@ -145,30 +145,57 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
     try {
       // Reset state
       setAudioError(null);
+      setIsRecording(false);
       setAudioBlob(null);
       setAudioUrl('');
       setRecordingTime(0);
       audioChunksRef.current = [];
       
       // Request microphone access
+      console.log("Requesting microphone access...");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       
-      // Create a new MediaRecorder instance
-      const mediaRecorder = new MediaRecorder(stream);
+      // Create a new MediaRecorder instance with explicit MIME type
+      const options = { mimeType: 'audio/webm;codecs=opus' };
+      let mediaRecorder;
+      
+      try {
+        mediaRecorder = new MediaRecorder(stream, options);
+      } catch (e) {
+        console.log('MediaRecorder with specified options not supported, trying default');
+        mediaRecorder = new MediaRecorder(stream);
+      }
+      
       mediaRecorderRef.current = mediaRecorder;
       
       // Set up event handlers
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
+        if (event.data && event.data.size > 0) {
+          console.log(`Got data chunk: ${event.data.size} bytes`);
           audioChunksRef.current.push(event.data);
+        } else {
+          console.warn('Received empty data chunk');
         }
       };
       
       mediaRecorder.onstop = async () => {
         try {
+          if (audioChunksRef.current.length === 0) {
+            console.error('No audio chunks collected');
+            setAudioError('No audio data was recorded. Please try again and speak clearly.');
+            return;
+          }
+          
           // Create a single Blob from all the chunks
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          
+          if (audioBlob.size === 0) {
+            console.error('Created empty audio blob');
+            setAudioError('Recording failed to capture any audio. Please check your microphone and try again.');
+            return;
+          }
+          
           setAudioBlob(audioBlob);
           
           // Create an object URL for the blob
@@ -176,17 +203,21 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
           setAudioUrl(url);
           
           console.log(`Recording stopped. Blob size: ${audioBlob.size} bytes`);
+          setHasRecorded(true);
         } catch (error) {
           console.error('Error processing recording:', error);
           setAudioError(`Error processing recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
         
         // Stop all tracks in the stream
-        stream.getTracks().forEach(track => track.stop());
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
+        }
       };
       
-      // Start the media recorder
-      mediaRecorder.start();
+      // Request data every 1 second to ensure we capture audio even if stopped unexpectedly
+      mediaRecorder.start(1000);
       setIsRecording(true);
       
       // Start the timer to track recording duration

@@ -9,7 +9,7 @@ import {
   type LiveTranscriptionEvent,
 } from "@deepgram/sdk";
 
-import { createContext, useContext, useState, ReactNode, FunctionComponent, useRef } from "react";
+import { createContext, useContext, useState, ReactNode, FunctionComponent, useRef, useEffect } from "react";
 
 interface DeepgramContextType {
   connectToDeepgram: () => Promise<void>;
@@ -42,37 +42,87 @@ const DeepgramContextProvider: FunctionComponent<DeepgramContextProviderProps> =
   const [realtimeTranscript, setRealtimeTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<MediaRecorder | null>(null);
+  const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Clean up resources on unmount
+  useEffect(() => {
+    return () => {
+      disconnectFromDeepgram();
+      if (connectionTimeoutRef.current) {
+        clearTimeout(connectionTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const connectToDeepgram = async () => {
     try {
       // Clean up any existing connections first
       disconnectFromDeepgram();
       
+      // Clear any existing timeouts
+      if (connectionTimeoutRef.current) {
+        clearTimeout(connectionTimeoutRef.current);
+        connectionTimeoutRef.current = null;
+      }
+      
       setError(null);
       setRealtimeTranscript("");
       
       console.log("Requesting microphone access...");
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        } 
+      });
       
       console.log("Creating audio recorder...");
-      audioRef.current = new MediaRecorder(stream, {
-        mimeType: 'audio/webm' // Use a simpler format
-      });
+      const options = { mimeType: 'audio/webm;codecs=opus' };
+      let recorder;
+      
+      try {
+        recorder = new MediaRecorder(stream, options);
+      } catch (e) {
+        console.log('MediaRecorder with specified options not supported, trying default');
+        recorder = new MediaRecorder(stream);
+      }
+      
+      audioRef.current = recorder;
 
       console.log("Fetching Deepgram API key...");
       const apiKey = await getApiKey();
+      
+      if (!apiKey) {
+        throw new Error("Failed to get Deepgram API key. Please check your environment variables.");
+      }
 
       console.log("Opening WebSocket connection...");
       const socket = new WebSocket("wss://api.deepgram.com/v1/listen", ["token", apiKey]);
+      
+      // Set a timeout to close connection if it doesn't establish quickly
+      connectionTimeoutRef.current = setTimeout(() => {
+        if (socket.readyState !== WebSocket.OPEN) {
+          console.error("Connection timed out");
+          setError("Connection to Deepgram timed out. Please try again.");
+          disconnectFromDeepgram();
+        }
+      }, 10000);
 
       socket.onopen = () => {
         try {
+          // Clear the timeout
+          if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+            connectionTimeoutRef.current = null;
+          }
+          
           setConnectionState(SOCKET_STATES.open);
           console.log("WebSocket connection opened successfully");
           
           if (audioRef.current) {
             audioRef.current.addEventListener("dataavailable", (event) => {
-              if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+              if (event.data && event.data.size > 0 && socket && socket.readyState === WebSocket.OPEN) {
                 try {
                   socket.send(event.data);
                 } catch (error) {
@@ -141,36 +191,61 @@ const DeepgramContextProvider: FunctionComponent<DeepgramContextProviderProps> =
     try {
       console.log("Disconnecting from Deepgram...");
       
+      // Clear connection timeout if it exists
+      if (connectionTimeoutRef.current) {
+        clearTimeout(connectionTimeoutRef.current);
+        connectionTimeoutRef.current = null;
+      }
+      
+      // Close WebSocket connection
       if (connection) {
-        if (connection.readyState === WebSocket.OPEN) {
-          connection.close(1000, "Disconnected by user");
+        try {
+          if (connection.readyState === WebSocket.OPEN || connection.readyState === WebSocket.CONNECTING) {
+            connection.close(1000, "Disconnected by user");
+          }
+        } catch (wsError) {
+          console.error("Error closing WebSocket connection:", wsError);
         }
         setConnection(null);
       }
       
+      // Stop MediaRecorder and release media tracks
       if (audioRef.current) {
         try {
           if (audioRef.current.state !== 'inactive') {
             audioRef.current.stop();
           }
-          
-          // Clean up media tracks
-          if (audioRef.current.stream) {
-            audioRef.current.stream.getTracks().forEach(track => track.stop());
-          }
-        } catch (error) {
-          console.error("Error stopping audio recording:", error);
+        } catch (recorderError) {
+          console.error("Error stopping MediaRecorder:", recorderError);
         }
+        
+        // Clean up media tracks
+        try {
+          if (audioRef.current.stream) {
+            audioRef.current.stream.getTracks().forEach(track => {
+              try {
+                track.stop();
+              } catch (trackError) {
+                console.error("Error stopping media track:", trackError);
+              }
+            });
+          }
+        } catch (streamError) {
+          console.error("Error accessing MediaRecorder stream:", streamError);
+        }
+        
         audioRef.current = null;
       }
       
-      // Reset the transcript when disconnecting
+      // Reset state
       setRealtimeTranscript("");
-      
       setConnectionState(SOCKET_STATES.closed);
       console.log("Disconnected from Deepgram");
     } catch (error) {
-      console.error("Error disconnecting from Deepgram:", error);
+      console.error("Error in disconnectFromDeepgram:", error);
+      // Still reset state even if errors occur
+      setConnectionState(SOCKET_STATES.closed);
+      setConnection(null);
     }
   };
 
