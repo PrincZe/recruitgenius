@@ -27,6 +27,8 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
   const [audioBase64, setAudioBase64] = useState<string | null>(null);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasRecorded, setHasRecorded] = useState(false);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
   const { connectToDeepgram, disconnectFromDeepgram, connectionState, realtimeTranscript } = useDeepgram();
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -83,38 +85,81 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
     if (!questionId) return;
     
     try {
-      // First check Supabase for existing recordings
-      const existingRecordings = await getRecordingsByQuestion(questionId);
-      const recording = existingRecordings.find(r => r.candidateId === candidateId);
-      if (recording) {
-        console.log(`Found existing recording in Supabase for question ${questionId}`);
-        
-        setAudioUrl(recording.audioUrl);
-        return;
-      }
+      setIsLoading(true);
       
-      // As a fallback, check localStorage during migration
-      const recordingsData = localStorage.getItem('recordings');
-      if (recordingsData) {
-        try {
-          const recordings = JSON.parse(recordingsData);
-          const existingRecording = recordings.find(
-            (r: any) => r.questionId === questionId && r.candidateId === candidateId
-          );
-          
-          if (existingRecording) {
-            console.log(`Found existing recording in localStorage for question ${questionId}`);
-            setAudioBase64(existingRecording.audioUrl);
-            setAudioUrl(existingRecording.audioUrl);
+      // First check if the questionId is a demo format (like q1, q2)
+      const isDemo = /^q\d+$/i.test(questionId);
+      console.log(`Checking for recording with ${isDemo ? 'demo' : 'UUID'} question ID: ${questionId}`);
+      
+      // If this is a demo question, prioritize checking localStorage
+      if (isDemo) {
+        const recordingsData = localStorage.getItem('recordings');
+        if (recordingsData) {
+          try {
+            const recordings = JSON.parse(recordingsData);
+            const existingRecording = recordings.find(
+              (r: any) => r.questionId === questionId && r.candidateId === candidateId
+            );
+            
+            if (existingRecording) {
+              console.log(`Found existing recording in localStorage for demo question ${questionId}`);
+              setAudioBase64(existingRecording.audioUrl);
+              setAudioUrl(existingRecording.audioUrl);
+              setHasRecorded(true);
+              setIsPreviewMode(true);
+              return;
+            }
+          } catch (error) {
+            console.error('Error parsing recordings data:', error);
           }
-        } catch (error) {
-          console.error('Error parsing recordings data:', error);
+        }
+      } else {
+        // For UUID-format questions, check Supabase first
+        try {
+          // First check Supabase for existing recordings
+          const existingRecordings = await getRecordingsByQuestion(questionId);
+          const recording = existingRecordings.find(r => r.candidateId === candidateId);
+          if (recording) {
+            console.log(`Found existing recording in Supabase for question ${questionId}`);
+            
+            setAudioUrl(recording.audioUrl);
+            setHasRecorded(true);
+            setIsPreviewMode(true);
+            return;
+          }
+        } catch (err) {
+          console.error(`Error retrieving Supabase recordings for question ${questionId}:`, err);
+        }
+        
+        // As a fallback, check localStorage 
+        const recordingsData = localStorage.getItem('recordings');
+        if (recordingsData) {
+          try {
+            const recordings = JSON.parse(recordingsData);
+            const existingRecording = recordings.find(
+              (r: any) => r.questionId === questionId && r.candidateId === candidateId
+            );
+            
+            if (existingRecording) {
+              console.log(`Found existing recording in localStorage for question ${questionId}`);
+              setAudioBase64(existingRecording.audioUrl);
+              setAudioUrl(existingRecording.audioUrl);
+              setHasRecorded(true);
+              setIsPreviewMode(true);
+            }
+          } catch (error) {
+            console.error('Error parsing recordings data:', error);
+          }
         }
       }
+      
+      console.log(`No existing recording found for question ${questionId}`);
     } catch (error) {
       console.error('Error checking for existing recordings:', error);
+    } finally {
+      setIsLoading(false);
     }
-  }, [questionId, candidateId, setAudioUrl, setAudioBase64, getRecordingsByQuestion]);
+  }, [questionId, candidateId, setAudioUrl, setAudioBase64]);
 
   const blobToBase64 = (blob: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -273,76 +318,94 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
         }
       }
       
-      // Convert blob to a File object for Supabase upload
-      const fileName = `${candidateId}_${questionId}_${recordingId}.${audioBlob.type.split('/')[1] || 'webm'}`;
-      const audioFile = blobToFile(audioBlob, fileName);
+      // Check if the questionId is a demo format (like q1, q2)
+      const isDemo = /^q\d+$/i.test(questionId);
+      console.log(`Saving recording with ${isDemo ? 'demo' : 'UUID'} question ID: ${questionId}`);
       
-      // Upload to Supabase Storage
-      const storagePath = `${candidateId}/${fileName}`;
-      const audioUrlFromStorage = await uploadAudioFile(audioFile, storagePath);
+      let audioUrlFromStorage = '';
+      let newRecordingId = '';
       
-      if (!audioUrlFromStorage) {
-        throw new Error('Failed to upload audio file to Supabase');
-      }
-      
-      // Use an empty string if no transcript is available
-      const transcript = realtimeTranscript || "";
-      console.log('Using transcript:', transcript ? 'Available' : 'Empty');
-      
-      // Add recording record to Supabase database
-      const recordingData = {
-        candidateId,
-        questionId,
-        transcript: transcript,
-        audioUrl: audioUrlFromStorage,
-      };
+      // For demo questions that don't exist in Supabase, only save to localStorage
+      if (!isDemo) {
+        try {
+          // Convert blob to a File object for Supabase upload
+          const fileName = `${candidateId}_${questionId}_${recordingId}.${audioBlob.type.split('/')[1] || 'webm'}`;
+          const audioFile = blobToFile(audioBlob, fileName);
+          
+          // Upload to Supabase Storage
+          const storagePath = `${candidateId}/${fileName}`;
+          audioUrlFromStorage = await uploadAudioFile(audioFile, storagePath);
+          
+          if (!audioUrlFromStorage) {
+            throw new Error('Failed to upload audio file to Supabase');
+          }
+          
+          // Use an empty string if no transcript is available
+          const transcript = realtimeTranscript || "";
+          console.log('Using transcript:', transcript ? 'Available' : 'Empty');
+          
+          // Add recording record to Supabase database
+          const recordingData = {
+            candidateId,
+            questionId,
+            transcript: transcript,
+            audioUrl: audioUrlFromStorage,
+          };
 
-      const newRecordingId = await addRecording(recordingData);
-      
-      if (!newRecordingId) {
-        throw new Error('Failed to add recording record to Supabase');
+          newRecordingId = await addRecording(recordingData);
+          
+          if (!newRecordingId) {
+            throw new Error('Failed to add recording record to Supabase');
+          }
+          
+          console.log('Recording saved to Supabase:', newRecordingId);
+        } catch (error) {
+          console.error('Error saving to Supabase:', error);
+          // Fall back to localStorage if Supabase fails
+          audioUrlFromStorage = '';
+        }
       }
-      
-      console.log('Recording saved successfully to Supabase:', newRecordingId);
-      
-      // Update audioUrl to point to the Supabase URL
-      setAudioUrl(audioUrlFromStorage);
       
       // During migration period, also save to localStorage as a backup
-      // This can be removed once migration is complete
-      const localRecordingData = {
-        id: recordingId,
-        candidateId,
-        questionId,
-        transcript: transcript,
-        audioUrl: base64Audio, // Store as base64 string in localStorage
-        createdAt: new Date().toISOString(),
-      };
-
-      // Get existing recordings or initialize empty array
-      const existingRecordings = JSON.parse(localStorage.getItem('recordings') || '[]');
-      
-      // Check if a recording for this question already exists
-      const existingIndex = existingRecordings.findIndex(
-        (r: any) => r.candidateId === candidateId && r.questionId === questionId
-      );
-      
-      if (existingIndex >= 0) {
-        // Update existing recording
-        existingRecordings[existingIndex] = localRecordingData;
-      } else {
-        // Add new recording
-        existingRecordings.push(localRecordingData);
+      // For demo questions, this will be the primary storage
+      try {
+        const recordingForStorage = {
+          id: newRecordingId || recordingId,
+          candidateId,
+          questionId,
+          transcript: realtimeTranscript || "",
+          audioUrl: audioUrlFromStorage || base64Audio, // Use Supabase URL if available, otherwise base64
+          createdAt: new Date().toISOString()
+        };
+        
+        // Get existing recordings from localStorage
+        const existingRecordings = JSON.parse(localStorage.getItem('recordings') || '[]');
+        
+        // Check if a recording already exists for this question and candidate
+        const existingIndex = existingRecordings.findIndex(
+          (r: any) => r.questionId === questionId && r.candidateId === candidateId
+        );
+        
+        if (existingIndex >= 0) {
+          // Replace the existing recording
+          existingRecordings[existingIndex] = recordingForStorage;
+        } else {
+          // Add as a new recording
+          existingRecordings.push(recordingForStorage);
+        }
+        
+        // Save back to localStorage
+        localStorage.setItem('recordings', JSON.stringify(existingRecordings));
+        console.log('Recording saved to localStorage');
+      } catch (error) {
+        console.error('Error saving to localStorage:', error);
       }
-      
-      // Save back to localStorage
-      localStorage.setItem('recordings', JSON.stringify(existingRecordings));
 
       // Call onRecordingComplete callback with the recorded data
       if (onRecordingComplete) {
         onRecordingComplete({
-          audioUrl: audioUrlFromStorage,
-          transcript: transcript,
+          audioUrl: audioUrlFromStorage || base64Audio,
+          transcript: realtimeTranscript || "",
           candidateId,
           questionId,
         });

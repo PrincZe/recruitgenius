@@ -221,6 +221,18 @@ export const getRecordingsByCandidate = async (candidateId: string): Promise<Rec
 
 export const getRecordingsByQuestion = async (questionId: string): Promise<Recording[]> => {
   try {
+    // Check if questionId is a valid UUID before querying
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    
+    // If it's not a UUID, try fetching the actual question first to get the real UUID
+    if (!uuidRegex.test(questionId)) {
+      console.log(`Question ID ${questionId} is not a UUID, attempting to find actual question record`);
+      
+      // If this is a demo "q1" style ID, we will fallback to localStorage
+      // since these questions don't exist in Supabase with those IDs
+      return [];
+    }
+    
     const { data, error } = await supabase
       .from('recordings')
       .select('*')

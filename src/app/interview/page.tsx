@@ -7,7 +7,8 @@ import { Session, Question } from '@/lib/models/types';
 import { 
   getQuestions, 
   addCandidate, 
-  createSession 
+  createSession,
+  addQuestion
 } from '@/lib/services/supabaseService';
 import { checkSupabaseConnection } from '@/lib/supabase/supabaseClient';
 import InterviewQuestionsClient from './[sessionId]/InterviewQuestionsClient';
@@ -153,6 +154,25 @@ export default function InterviewStartPage() {
       if (questions.length === 0) {
         const questionsData = localStorage.getItem('questions');
         questions = questionsData ? JSON.parse(questionsData) : demoQuestions;
+        
+        console.log('Using demo or localStorage questions instead of Supabase');
+        
+        // If using demo questions, we need to add them to Supabase for future use
+        if (questions === demoQuestions) {
+          console.log('Attempting to seed demo questions to Supabase for future use');
+          try {
+            // Add demo questions to Supabase one by one
+            for (const question of demoQuestions) {
+              await addQuestion({
+                text: question.text,
+                category: question.category || 'General'
+              });
+            }
+            console.log('Successfully added demo questions to Supabase');
+          } catch (error) {
+            console.error('Failed to add demo questions to Supabase:', error);
+          }
+        }
       }
       
       if (questions.length === 0) {
