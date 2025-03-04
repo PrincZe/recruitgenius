@@ -24,101 +24,67 @@ export default function TextToSpeech({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioDataRef = useRef<string | null>(null);
   const textRef = useRef<string>(text);
-  const isPlayingRef = useRef<boolean>(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Define playAudio function for the OpenAI TTS implementation
   const playAudio = useCallback(() => {
     if (!audioDataRef.current) return;
     
-    // Create audio element if it doesn't exist
-    if (!audioRef.current) {
-      audioRef.current = new Audio(`data:audio/mp3;base64,${audioDataRef.current}`);
+    try {
+      // Clean up existing audio element before creating a new one
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+        audioRef.current.load();
+      }
+    
+      // Create new audio element each time to avoid reuse issues
+      audioRef.current = new Audio();
       
+      // Set audio source
+      audioRef.current.src = `data:audio/mp3;base64,${audioDataRef.current}`;
+      
+      // Configure audio element
+      audioRef.current.preload = 'auto';
+      
+      // Add event listeners
       audioRef.current.addEventListener('play', () => {
         setIsPlaying(true);
-        isPlayingRef.current = true;
-        setIsLoading(false); // Ensure loading is set to false when audio starts playing
+        setIsLoading(false);
         onPlaybackStarted?.();
-      });
+      }, { once: true });
       
       audioRef.current.addEventListener('ended', () => {
         setIsPlaying(false);
-        isPlayingRef.current = false;
         onPlaybackEnded?.();
-      });
-      
-      audioRef.current.addEventListener('pause', () => {
-        // Only update playing state if it's not due to seeking/buffering
-        if (!audioRef.current!.seeking) {
-          setIsPlaying(false);
-          isPlayingRef.current = false;
-        }
-      });
+      }, { once: true });
       
       audioRef.current.addEventListener('error', (e) => {
         console.error('Audio playback error:', e);
         setIsPlaying(false);
-        isPlayingRef.current = false;
         setIsLoading(false);
         setError('Failed to play audio. Please try again.');
-        // Clear the audio data to force a reload next time
         audioDataRef.current = null;
-        audioRef.current = null;
-      });
+      }, { once: true });
       
-      // Add timeupdate listener to detect and fix any playback issues
-      audioRef.current.addEventListener('timeupdate', () => {
-        const audio = audioRef.current;
-        if (audio && audio.duration > 0) {
-          // If audio unexpectedly starts over while playing (not at the end)
-          if (audio.currentTime < 0.5 && isPlayingRef.current && audio.duration > 1) {
-            console.log('Detected unexpected audio restart, correcting...');
-            // Stop the propagation of timeupdate events temporarily
-            audio.removeEventListener('timeupdate', () => {});
-            // Resume playback from where it should be
-            const targetTime = audio.duration * 0.1; // Jump ahead slightly
-            audio.currentTime = targetTime;
-            setTimeout(() => {
-              // Re-add the timeupdate listener after a short delay
-              if (audioRef.current) {
-                audioRef.current.addEventListener('timeupdate', () => {});
-              }
-            }, 500);
-          }
-        }
-      });
-    }
-    
-    // Play the audio
-    try {
-      // Reset the audio to the beginning to prevent looping issues
-      audioRef.current.currentTime = 0;
-      
-      // Some browsers require user interaction before playing audio
+      // Start playback
       const playPromise = audioRef.current.play();
       
       if (playPromise !== undefined) {
         playPromise.catch(error => {
           console.error('Error playing audio:', error);
           setIsPlaying(false);
-          isPlayingRef.current = false;
           setIsLoading(false);
           setError('Failed to play audio. Please try again.');
-          // Clear the audio data to force a reload next time
           audioDataRef.current = null;
-          audioRef.current = null;
         });
       }
     } catch (error) {
       console.error('Error playing audio:', error);
       setIsPlaying(false);
-      isPlayingRef.current = false;
       setIsLoading(false);
       setError('Failed to play audio. Please try again.');
-      // Clear the audio data to force a reload next time
       audioDataRef.current = null;
-      audioRef.current = null;
     }
   }, [onPlaybackStarted, onPlaybackEnded]);
 
@@ -164,12 +130,14 @@ export default function TextToSpeech({
       playAudio();
       
       // Set a timeout to reset loading state if it gets stuck
-      setTimeout(() => {
+      const loadingTimeout = setTimeout(() => {
         if (isLoading) {
           console.log('Loading state was stuck, resetting');
           setIsLoading(false);
         }
       }, 5000);
+      
+      return () => clearTimeout(loadingTimeout);
       
     } catch (error) {
       // Only log error if it's not an abort error
@@ -185,19 +153,20 @@ export default function TextToSpeech({
   useEffect(() => {
     if (textRef.current !== text) {
       console.log('Text changed, resetting audio data');
-      audioDataRef.current = null;
+      
+      // Clean up existing audio
       if (audioRef.current) {
-        // Stop any ongoing playback
-        if (!audioRef.current.paused) {
-          audioRef.current.pause();
-        }
+        audioRef.current.pause();
+        audioRef.current.src = '';
+        audioRef.current.load();
         audioRef.current = null;
       }
+      
+      audioDataRef.current = null;
       
       // Reset states
       setError(null);
       setIsPlaying(false);
-      isPlayingRef.current = false;
       textRef.current = text;
       
       // Auto-play if enabled
@@ -219,9 +188,9 @@ export default function TextToSpeech({
     return () => {
       if (audioRef.current) {
         // Stop any ongoing playback
-        if (!audioRef.current.paused) {
-          audioRef.current.pause();
-        }
+        audioRef.current.pause();
+        audioRef.current.src = '';
+        audioRef.current.load();
         audioRef.current = null;
       }
       
@@ -231,18 +200,14 @@ export default function TextToSpeech({
       }
       
       audioDataRef.current = null;
-      isPlayingRef.current = false;
     };
   }, []);
 
   const handleClick = () => {
-    if (isPlaying) {
+    if (isPlaying && audioRef.current) {
       // If already playing, pause it
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
+      audioRef.current.pause();
       setIsPlaying(false);
-      isPlayingRef.current = false;
     } else {
       // If not playing, start playing
       setError(null);
