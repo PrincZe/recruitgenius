@@ -9,19 +9,19 @@ import { v4 as uuidv4 } from 'uuid';
 // Demo questions to use if none exist in localStorage
 const demoQuestions = [
   {
-    id: "q1",
+    id: uuidv4(), // Use UUID format for compatibility with Supabase
     text: "Tell me about your background and experience.",
     category: "Background",
     createdAt: new Date().toISOString()
   },
   {
-    id: "q2",
+    id: uuidv4(), // Use UUID format for compatibility with Supabase
     text: "What are your strengths and weaknesses?",
     category: "Personal",
     createdAt: new Date().toISOString()
   },
   {
-    id: "q3",
+    id: uuidv4(), // Use UUID format for compatibility with Supabase
     text: "Describe a challenging situation you faced at work and how you handled it.",
     category: "Experience",
     createdAt: new Date().toISOString()
@@ -36,265 +36,133 @@ export default function InterviewQuestionsClient({ params }: { params: { session
   const [recordingSubmitted, setRecordingSubmitted] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [questionIndex, setQuestionIndex] = useState(0);
+  const [candidateId, setCandidateId] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Parse query parameters from hash
-    const hash = window.location.hash;
-    const queryParams = new URLSearchParams(hash.split('?')[1] || '');
-    const qParam = queryParams.get('q');
+  // Define fetchSessionData outside of useEffect
+  const fetchSessionData = () => {
+    setLoading(true);
+    setError(null);
     
-    if (qParam !== null) {
-      setQuestionIndex(parseInt(qParam, 10));
+    console.log(`Attempting to fetch session data for ID: ${params.sessionId}, Question index: ${questionIndex}`);
+
+    // Get session data from localStorage
+    const sessionsData = localStorage.getItem('sessions');
+    if (!sessionsData) {
+      console.error('No sessions found in localStorage');
+      setError('No sessions found. Would you like to create a demo session?');
+      setLoading(false);
+      return;
+    }
+
+    const sessions = JSON.parse(sessionsData);
+    console.log(`Found ${sessions.length} sessions in localStorage`);
+    
+    // Log all available session IDs for debugging
+    console.log('Available session IDs:', sessions.map((s: Session) => s.id));
+    
+    // Find the session by ID - make sure to trim any whitespace
+    const sessionId = params.sessionId.trim();
+    const session = sessions.find((s: Session) => s.id.trim() === sessionId);
+    
+    if (!session) {
+      console.error(`Session with ID ${sessionId} not found in ${sessions.length} available sessions`);
+      
+      // Check if this is a new session ID or if we need to recover
+      // If there are existing sessions and the URL has a hash with 'interview/', attempt recovery
+      if (sessions.length > 0 && window.location.hash.includes('interview/')) {
+        console.log('Attempting to recover using the most recent session');
+        
+        // Sort sessions by createdAt (most recent first)
+        const sortedSessions = [...sessions].sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        
+        // Use the most recent session
+        const mostRecentSession = sortedSessions[0];
+        console.log(`Recovering with session ID: ${mostRecentSession.id}`);
+        
+        // Update the URL to match the session we found
+        window.location.hash = `interview/${mostRecentSession.id}?q=${questionIndex}`;
+        
+        // Continue with this session instead
+        setSession(mostRecentSession);
+        // Set the current question based on the question index
+        if (mostRecentSession.questions && questionIndex < mostRecentSession.questions.length) {
+          const questionId = mostRecentSession.questions[questionIndex];
+          const question = demoQuestions.find(q => q.id === questionId);
+          if (question) {
+            setCurrentQuestion(question);
+          }
+        }
+        return;
+      }
+      
+      setError('Session not found. Would you like to create a demo session?');
+      setLoading(false);
+      return;
+    }
+
+    console.log(`Found session: ${session.id}, Progress: ${session.progress}, Questions: ${session.questions.length}`);
+    setSession(session);
+    
+    // Set the current question based on the session
+    if (session.questions && questionIndex < session.questions.length) {
+      const questionId = session.questions[questionIndex];
+      const question = demoQuestions.find(q => q.id === questionId);
+      if (question) {
+        setCurrentQuestion(question);
+      } else {
+        console.error(`Question with ID ${questionId} not found`);
+      }
     }
     
-    // Define fetchSessionData inside useEffect to avoid dependency issues
-    const fetchSessionData = () => {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        console.log(`Attempting to fetch session data for ID: ${params.sessionId}, Question index: ${questionIndex}`);
+    setLoading(false);
+  };
 
-        // Get session data from localStorage
-        const sessionsData = localStorage.getItem('sessions');
-        if (!sessionsData) {
-          console.error('No sessions found in localStorage');
-          setError('No sessions found. Would you like to create a demo session?');
-          setLoading(false);
-          return;
-        }
-
-        const sessions = JSON.parse(sessionsData);
-        console.log(`Found ${sessions.length} sessions in localStorage`);
-        
-        // Log all available session IDs for debugging
-        console.log('Available session IDs:', sessions.map((s: Session) => s.id));
-        
-        // Find the session by ID - make sure to trim any whitespace
-        const sessionId = params.sessionId.trim();
-        const session = sessions.find((s: Session) => s.id.trim() === sessionId);
-        
-        if (!session) {
-          console.error(`Session with ID ${sessionId} not found in ${sessions.length} available sessions`);
-          
-          // Check if this is a new session ID or if we need to recover
-          // If there are existing sessions and the URL has a hash with 'interview/', attempt recovery
-          if (sessions.length > 0 && window.location.hash.includes('interview/')) {
-            console.log('Attempting to recover using the most recent session');
-            
-            // Sort sessions by createdAt (most recent first)
-            const sortedSessions = [...sessions].sort((a, b) => 
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-            );
-            
-            // Use the most recent session
-            const mostRecentSession = sortedSessions[0];
-            console.log(`Recovering with session ID: ${mostRecentSession.id}`);
-            
-            // Update the URL to match the session we found
-            window.location.hash = `interview/${mostRecentSession.id}?q=${questionIndex}`;
-            
-            // Continue with this session instead
-            setSession(mostRecentSession);
-            fetchQuestionData(mostRecentSession);
-            return;
-          }
-          
-          setError('Session not found. Would you like to create a demo session?');
-          setLoading(false);
-          return;
-        }
-
-        console.log(`Found session: ${session.id}, Progress: ${session.progress}, Questions: ${session.questions.length}`);
-        setSession(session);
-        
-        // Fetch the question data
-        fetchQuestionData(session);
-      } catch (error) {
-        console.error('Error fetching session data:', error);
-        setError('Error loading session data. Would you like to create a demo session?');
-        setLoading(false);
-      }
-    };
+  useEffect(() => {
+    // Get candidateId from URL search params
+    const urlParams = new URLSearchParams(window.location.search);
+    const candidate = urlParams.get('candidateId');
+    console.log("Candidate ID from URL:", candidate);
     
-    // Function to fetch question data
-    const fetchQuestionData = (session: Session) => {
-      try {
-        const questionsData = localStorage.getItem('questions');
-        if (!questionsData) {
-          console.error('No questions found in localStorage');
-          setError('No questions found. Would you like to create a demo session?');
-          setLoading(false);
-          return;
-        }
-        
-        const questions = JSON.parse(questionsData);
-        console.log(`Found ${questions.length} questions in localStorage`);
-        
-        // Ensure the question index is valid
-        const validIndex = Math.min(questionIndex, session.questions.length - 1);
-        if (validIndex !== questionIndex) {
-          console.log(`Adjusting question index from ${questionIndex} to ${validIndex}`);
-          setQuestionIndex(validIndex);
-        }
-        
-        // Get the current question ID from the session
-        const questionId = session.questions[validIndex];
-        if (!questionId) {
-          console.error(`Question ID not found at index ${validIndex}`);
-          setError('Question not found. Would you like to create a demo session?');
-          setLoading(false);
-          return;
-        }
-        
-        console.log(`Looking for question ID: ${questionId} at index ${validIndex}`);
-        
-        // Find the question by ID
-        const question = questions.find((q: Question) => q.id === questionId);
-        if (!question) {
-          console.error(`Question with ID ${questionId} not found in questions list`);
-          setError('Question details not found. Would you like to create a demo session?');
-          setLoading(false);
-          return;
-        }
-        
-        console.log(`Found question: ${question.text}`);
-        setCurrentQuestion(question);
-        
-        // Check if this question has been submitted already
-        const recordingsData = localStorage.getItem('recordings');
-        if (recordingsData) {
-          const recordings = JSON.parse(recordingsData);
-          const hasRecording = recordings.some(
-            (r: any) => r.candidateId === session.candidateId && r.questionId === questionId
-          );
-          setRecordingSubmitted(hasRecording);
-          console.log(`Question ${hasRecording ? 'has' : 'has not'} been submitted already`);
-        } else {
-          setRecordingSubmitted(false);
-        }
-        
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching question data:', error);
-        setError('Error loading question data. Would you like to create a demo session?');
-        setLoading(false);
-      }
-    };
+    if (candidate) {
+      setCandidateId(candidate);
+    }
     
-    fetchSessionData();
-  }, [params.sessionId, questionIndex]);
+    // Only fetch session data if sessionId is available
+    if (params.sessionId) {
+      // For demo session, create a demo session
+      if (params.sessionId === 'demo-session') {
+        createDemoSession();
+        return;
+      }
+      
+      // Otherwise, try to fetch the session
+      fetchSessionData();
+    }
+  }, [params.sessionId]);
 
+  // Function to create a demo session
   const createDemoSession = () => {
     try {
-      console.log(`Creating a demo session with ID: ${params.sessionId}`);
-      
-      // Create demo questions if needed
-      const questionsData = localStorage.getItem('questions');
-      if (!questionsData || JSON.parse(questionsData).length === 0) {
-        localStorage.setItem('questions', JSON.stringify(demoQuestions));
-        console.log('Added demo questions to localStorage');
-      }
-      
-      // Use existing questions or demo questions
-      const questions = questionsData ? JSON.parse(questionsData) : demoQuestions;
-      console.log(`Using ${questions.length} questions for demo session`);
-      
-      // Create a demo candidate
-      const candidateId = uuidv4();
-      const candidate = {
-        id: candidateId,
-        name: "Demo User",
-        email: "demo@example.com",
-        createdAt: new Date().toISOString()
-      };
-      
-      // Save candidate to localStorage
-      const candidatesData = localStorage.getItem('candidates');
-      const candidates = candidatesData ? JSON.parse(candidatesData) : [];
-      candidates.push(candidate);
-      localStorage.setItem('candidates', JSON.stringify(candidates));
-      console.log(`Added demo candidate with ID: ${candidateId}`);
-      
-      // Use the same session ID consistently
-      // This prevents issues when refreshing or navigating
-      const sessionId = params.sessionId.trim();
-      
-      // Create a new session
-      const newSession: Session = {
-        id: sessionId,
-        candidateId,
-        questions: questions.map((q: Question) => q.id),
-        progress: 0, // Always start at the first question
+      // Create a demo session
+      const demoSession: Session = {
+        id: 'demo-session',
+        candidateId: candidateId || 'demo-candidate',
+        questions: demoQuestions.map(q => q.id),
+        progress: 0,
         isCompleted: false,
         createdAt: new Date().toISOString()
       };
       
-      // Save session to localStorage
-      const sessionsData = localStorage.getItem('sessions');
-      const sessions = sessionsData ? JSON.parse(sessionsData) : [];
-      
-      // Check if session already exists
-      const existingSessionIndex = sessions.findIndex((s: Session) => s.id.trim() === sessionId);
-      if (existingSessionIndex >= 0) {
-        // Update existing session
-        console.log(`Updating existing session at index ${existingSessionIndex}`);
-        sessions[existingSessionIndex] = newSession;
-      } else {
-        // Add new session
-        console.log(`Adding new session with ID ${sessionId}`);
-        sessions.push(newSession);
-      }
-      
-      localStorage.setItem('sessions', JSON.stringify(sessions));
-      console.log(`Created demo session and saved to localStorage. Total sessions: ${sessions.length}`);
-      
-      // Clear any existing recordings for this session to start fresh
-      const recordingsData = localStorage.getItem('recordings');
-      if (recordingsData) {
-        const recordings = JSON.parse(recordingsData);
-        const filteredRecordings = recordings.filter(
-          (r: any) => r.candidateId !== candidateId
-        );
-        localStorage.setItem('recordings', JSON.stringify(filteredRecordings));
-        console.log(`Removed any existing recordings for candidate ${candidateId}`);
-      }
-      
-      // Get the current question
-      const currentQuestionId = questions[0]?.id;
-      if (!currentQuestionId) {
-        throw new Error('No question found');
-      }
-      
-      const currentQuestion = questions.find((q: Question) => q.id === currentQuestionId);
-      if (!currentQuestion) {
-        throw new Error('Question not found');
-      }
-      
-      // Update state immediately
-      setSession(newSession);
-      setCurrentQuestion(currentQuestion);
-      setQuestionIndex(0); // Reset to first question
+      // Set the session and first question
+      setSession(demoSession);
+      setCurrentQuestion(demoQuestions[0]);
       setLoading(false);
-      setError(null);
-      setRecordingSubmitted(false);
-      
-      console.log(`Successfully created and loaded demo session with question: ${currentQuestion.text}`);
-      
-      // Update the URL to ensure consistency
-      const newHash = `interview/${sessionId}?q=0`;
-      console.log(`Setting URL hash to: ${newHash}`);
-      window.location.hash = newHash;
-      
-      // Reload the page to ensure everything is fresh
-      window.location.reload();
-      
-      return true;
     } catch (error) {
       console.error('Error creating demo session:', error);
-      setError('Failed to create demo session. Please try refreshing the page.');
+      setError('Failed to create demo session.');
       setLoading(false);
-      return false;
     }
   };
 

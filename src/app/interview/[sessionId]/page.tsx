@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import InterviewQuestionsClient from './InterviewQuestionsClient';
 
 // This function is required for static site generation with dynamic routes
@@ -9,5 +10,9 @@ export function generateStaticParams() {
 }
 
 export default function InterviewQuestionsPage({ params }: { params: { sessionId: string } }) {
-  return <InterviewQuestionsClient params={params} />;
+  return (
+    <Suspense fallback={<div className="flex justify-center items-center h-screen">Loading...</div>}>
+      <InterviewQuestionsClient params={params} />
+    </Suspense>
+  );
 } 
