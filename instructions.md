@@ -99,3 +99,122 @@
 *   FIREBASE_STORAGE_BUCKET=your_firebase_storage_bucket
 *   FIREBASE_MESSAGING_SENDER_ID=your_firebase_messaging_sender_id
 *   FIREBASE_APP_ID=your_firebase_app_id
+
+---
+
+## Changelog: Voice Recording Improvements (2025-03-04)
+
+### Issues Addressed:
+1. Recordings not properly associated with specific questions when navigating between them
+2. Audio playback issues in different browsers
+3. State management problems with recordings
+4. Missing error handling for recording and playback failures
+5. No session recovery functionality 
+6. UI/UX issues with recording display
+
+### Components Updated:
+
+#### 1. VoiceRecorder Component (`src/components/VoiceRecorder.tsx`):
+- Added tracking of the current question ID using a ref to detect question changes
+- Implemented proper cleanup of MediaRecorder and audio resources when unmounting or changing questions
+- Added comprehensive error handling for recording, saving, and playback
+- Improved browser compatibility by trying multiple audio formats (webm, mp4, ogg, wav)
+- Added fallback mechanisms for audio playback (trying base64 version if URL blob fails)
+- Enhanced UI with better visual feedback during recording
+- Added proper metadata to recorded audio to associate with specific questions
+- Implemented local storage for saving recordings with proper question and candidate IDs
+- Added audio error display with option to re-record
+
+#### 2. InterviewForm Component (`src/components/InterviewForm.tsx`):
+- Added state for tracking the current recording for each question
+- Implemented useEffect to update the current recording when question changes
+- Added key props to VoiceRecorder and audio elements to force proper re-rendering
+- Improved navigation between questions with cleaner state management
+- Added progress indicators to show which questions have been completed
+- Enhanced UI with animations for question transitions
+
+#### 3. New Component: InterviewSessionRecovery (`src/components/InterviewSessionRecovery.tsx`):
+- Created a new component to handle session recovery
+- Implemented detection of existing recordings in localStorage
+- Added UI for prompting users to continue a previous session or start new
+- Added functionality to clear session data when starting new
+
+### Current Status:
+- ✅ Phase 1 (Core Audio Functionality): Complete
+- ✅ Task 4 (Build Audio Recording Capability): Significantly improved with robust error handling
+- ✅ Task 6 (Develop Candidate-Facing Interface): Enhanced with better UX for recording
+- ✅ Task 9 (Data Connections): Improved with proper association of recordings to questions
+
+### Next Steps:
+- Implement Firebase integration for permanent storage of recordings beyond localStorage
+- Enhance the dashboard for hiring managers to review all candidate responses
+- Add functionality to export interview results and transcripts
+- Implement more advanced transcription options with Deepgram
+
+### Technical Notes:
+- The application now properly handles recordings for each question independently
+- Audio compatibility has been improved across browsers
+- Session management allows candidates to resume interviews
+- Error handling has been added at multiple levels for a more robust user experience
+
+---
+
+## Changelog: Migration from localStorage to Supabase (2025-03-05)
+
+### Issues Addressed:
+1. Data persistence limited by localStorage constraints
+2. No centralized storage for recordings and candidate information
+3. Admin dashboard unable to access recordings from different devices
+4. Recordings lost when browser data is cleared
+5. Limited scalability for larger applications
+
+### Components Updated:
+
+#### 1. VoiceRecorder Component (`src/components/VoiceRecorder.tsx`):
+- Integrated with Supabase Storage for saving audio recordings
+- Added functionality to upload audio files to Supabase
+- Implemented proper metadata association with recordings
+- Added fallback to localStorage during migration period
+- Enhanced error handling for Supabase operations
+- Improved audio playback from Supabase URLs
+
+#### 2. InterviewForm Component (`src/components/InterviewForm.tsx`):
+- Updated to fetch recordings from Supabase instead of localStorage
+- Added fallback mechanisms for backward compatibility
+- Enhanced state management for recordings
+- Improved loading states and error handling
+- Added proper session management with Supabase
+
+#### 3. Admin Dashboard (`src/app/admin/page.tsx` and related components):
+- Updated to fetch candidates, questions, and recordings from Supabase
+- Implemented proper data refresh functionality
+- Enhanced UI with better loading states and error handling
+- Improved audio playback for recordings stored in Supabase
+
+#### 4. Interview Start Page (`src/app/interview/page.tsx`):
+- Updated to create candidates and sessions in Supabase
+- Enhanced form for collecting candidate information
+- Improved error handling and loading states
+- Added proper session management
+
+#### 5. Supabase Services:
+- Implemented comprehensive data services for Supabase operations
+- Added functions for managing candidates, questions, sessions, and recordings
+- Implemented proper error handling and data validation
+- Added utilities for working with Supabase Storage
+
+### Current Status:
+- ✅ Phase 1 (Core Audio Functionality): Complete
+- ✅ Phase 2 (Candidate Assessment Flow): Complete with Supabase integration
+- ✅ Phase 3 (Admin Interface): Complete with Supabase integration
+- ✅ Task 5 (Create Basic Data Storage): Updated to use Supabase instead of localStorage
+- ✅ Task 7 (Enable Audio Processing Pipeline): Enhanced with Supabase Storage
+- ✅ Task 12 (Connecting dashboard to the data): Completed with Supabase integration
+
+### Technical Notes:
+- The application now uses Supabase for all data storage needs
+- Fallback mechanisms to localStorage are in place for backward compatibility
+- Audio recordings are stored in Supabase Storage with proper metadata
+- Admin dashboard can now access all recordings from a central database
+- Candidate information is properly stored and associated with recordings
+- Questions can be managed through the admin interface and stored in Supabase

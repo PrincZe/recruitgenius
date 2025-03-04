@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useDeepgram } from '../lib/contexts/DeepgramContext';
 import { motion } from 'framer-motion';
-import { Mic, Pause, Loader2, Send, Volume2, RefreshCw } from 'lucide-react';
+import { Mic, Pause, Loader2, Send, Volume2, RefreshCw, AlertCircle } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import { addRecording, uploadAudioFile, getRecordingsByQuestion } from '../lib/services/supabaseService';
 
 interface VoiceRecorderProps {
   questionId: string;
@@ -25,6 +26,7 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioBase64, setAudioBase64] = useState<string | null>(null);
   const [audioError, setAudioError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const { connectToDeepgram, disconnectFromDeepgram, connectionState, realtimeTranscript } = useDeepgram();
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -76,177 +78,164 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
     }
   }, [questionId, disconnectFromDeepgram, isRecording]);
 
-  // Check if there's an existing recording for this question
-  const checkExistingRecording = () => {
+  // Check if we have already recorded this question
+  const checkExistingRecording = useCallback(async () => {
+    if (!questionId) return;
+    
     try {
+      // First check Supabase for existing recordings
+      const existingRecordings = await getRecordingsByQuestion(questionId);
+      const recording = existingRecordings.find(r => r.candidateId === candidateId);
+      if (recording) {
+        console.log(`Found existing recording in Supabase for question ${questionId}`);
+        
+        setAudioUrl(recording.audioUrl);
+        return;
+      }
+      
+      // As a fallback, check localStorage during migration
       const recordingsData = localStorage.getItem('recordings');
       if (recordingsData) {
-        const recordings = JSON.parse(recordingsData);
-        const existingRecording = recordings.find(
-          (r: any) => r.candidateId === candidateId && r.questionId === questionId
-        );
-        
-        if (existingRecording && existingRecording.audioUrl) {
-          console.log(`Found existing recording for question ${questionId}`);
-          setAudioBase64(existingRecording.audioUrl);
-          setAudioUrl(existingRecording.audioUrl);
-          return true;
+        try {
+          const recordings = JSON.parse(recordingsData);
+          const existingRecording = recordings.find(
+            (r: any) => r.questionId === questionId && r.candidateId === candidateId
+          );
+          
+          if (existingRecording) {
+            console.log(`Found existing recording in localStorage for question ${questionId}`);
+            setAudioBase64(existingRecording.audioUrl);
+            setAudioUrl(existingRecording.audioUrl);
+          }
+        } catch (error) {
+          console.error('Error parsing recordings data:', error);
         }
       }
-      console.log(`No existing recording found for question ${questionId}`);
-      return false;
     } catch (error) {
-      console.error('Error checking existing recording:', error);
-      return false;
+      console.error('Error checking for existing recordings:', error);
     }
-  };
+  }, [questionId, candidateId, setAudioUrl, setAudioBase64, getRecordingsByQuestion]);
 
-  // Handle recording timer
-  useEffect(() => {
-    if (isRecording) {
-      timerRef.current = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
-      }, 1000);
-    } else if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
-
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
-  }, [isRecording]);
-
-  // Cleanup function for audio URL
-  useEffect(() => {
-    return () => {
-      // Revoke any object URLs to prevent memory leaks
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(audioUrlRef.current);
-      }
-    };
-  }, []);
-
-  // Convert blob to base64
   const blobToBase64 = (blob: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64String = reader.result as string;
-        resolve(base64String);
+        // Extract only the base64 data part if it's a data URL
+        const base64Data = base64String.split(',')[1];
+        resolve(base64Data);
       };
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
   };
+  
+  const blobToFile = (blob: Blob, fileName: string): File => {
+    return new File([blob], fileName, { type: blob.type });
+  };
 
   const handleStartRecording = async () => {
     try {
-      // Reset state
-      setAudioBlob(null);
       setAudioError(null);
       
-      // Revoke previous URL if exists
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(audioUrlRef.current);
-        audioUrlRef.current = null;
-      }
-      
-      setAudioUrl(null);
-      setAudioBase64(null);
-      setRecordingTime(0);
-      audioChunksRef.current = [];
-
-      // Start Deepgram for real-time transcription
-      await connectToDeepgram();
-
-      // Start audio recording with MediaRecorder
+      // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      // Try multiple audio formats for better compatibility
-      let mediaRecorder;
+      // Determine the supported audio format
       const mimeTypes = [
         'audio/webm',
         'audio/mp4',
-        'audio/ogg;codecs=opus',
-        'audio/wav',
-        ''  // Let the browser decide
+        'audio/ogg',
+        'audio/wav'
       ];
       
-      for (const mimeType of mimeTypes) {
-        if (mimeType === '' || MediaRecorder.isTypeSupported(mimeType)) {
-          try {
-            mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-            console.log(`Using MIME type: ${mediaRecorder.mimeType}`);
-            break;
-          } catch (e) {
-            console.warn(`Failed to create MediaRecorder with MIME type ${mimeType}:`, e);
-          }
+      let mimeType = '';
+      for (const type of mimeTypes) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          mimeType = type;
+          break;
         }
       }
       
-      if (!mediaRecorder) {
-        throw new Error('No supported media recorder format found');
+      if (!mimeType) {
+        throw new Error('No supported audio format found for your browser');
       }
-
+      
+      // Start recording
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+      
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
         }
       };
-
+      
       mediaRecorder.onstop = async () => {
-        try {
-          // Create a blob with the detected type
-          const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
+        // When recording is stopped, concatenate chunks to create a blob
+        if (audioChunksRef.current.length > 0) {
+          const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
           setAudioBlob(audioBlob);
           
-          // Create a URL for preview in the browser
+          // Create an object URL for the audio blob
           const url = URL.createObjectURL(audioBlob);
-          audioUrlRef.current = url;
           setAudioUrl(url);
+          audioUrlRef.current = url;
           
-          // Also convert to base64 for storage
+          // Also store as base64 for backup playback option
           try {
-            const base64 = await blobToBase64(audioBlob);
-            setAudioBase64(base64);
+            const base64Data = await blobToBase64(audioBlob);
+            setAudioBase64(base64Data);
           } catch (error) {
-            console.error('Error converting audio to base64:', error);
-            setAudioError('Error processing audio. Please try recording again.');
+            console.error("Error converting blob to base64:", error);
           }
-        } catch (error) {
-          console.error('Error processing audio after recording:', error);
-          setAudioError('Error processing audio. Please try recording again.');
         }
+        
+        // Stop all tracks in the stream
+        stream.getTracks().forEach(track => track.stop());
       };
-
-      mediaRecorderRef.current = mediaRecorder;
-      mediaRecorder.start(1000); // Collect data every 1000ms (1 second) for more stable chunks
+      
+      // Start the media recorder
+      mediaRecorder.start();
       setIsRecording(true);
+      
+      // Start the timer to track recording duration
+      let seconds = 0;
+      timerRef.current = setInterval(() => {
+        seconds++;
+        setRecordingTime(seconds);
+      }, 1000);
+      
+      // Start Deepgram for real-time transcription
+      await connectToDeepgram();
+      
     } catch (error) {
       console.error('Error starting recording:', error);
-      setAudioError('Could not access microphone. Please check your browser permissions.');
+      setAudioError(`Microphone access error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
   const handleStopRecording = async () => {
-    if (!mediaRecorderRef.current) return;
-
     try {
-      // Stop MediaRecorder and Deepgram
-      mediaRecorderRef.current.stop();
-      disconnectFromDeepgram();
-      setIsRecording(false);
-
-      // Clean up MediaRecorder tracks
-      if (mediaRecorderRef.current.stream) {
-        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      if (mediaRecorderRef.current && isRecording) {
+        // Stop the media recorder
+        mediaRecorderRef.current.stop();
+        
+        // Clear the timer
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+        
+        // Stop Deepgram connection
+        disconnectFromDeepgram();
+        
+        setIsRecording(false);
       }
     } catch (error) {
       console.error('Error stopping recording:', error);
-      setIsRecording(false);
-      setAudioError('Error stopping recording. Please try again.');
+      setAudioError(`Error stopping recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -263,7 +252,14 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
       // Generate a unique ID for the recording
       const recordingId = uuidv4();
       
-      // Convert to base64 if not already done
+      // Make sure we have a blob to work with
+      if (!audioBlob) {
+        setAudioError('No audio data available. Please try recording again.');
+        setIsProcessing(false);
+        return;
+      }
+      
+      // Convert to base64 if not already done (as backup for playback)
       let base64Audio = audioBase64;
       if (!base64Audio && audioBlob) {
         try {
@@ -277,24 +273,49 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
         }
       }
       
-      // If we still don't have base64 audio, create a placeholder
-      if (!base64Audio) {
-        setAudioError('No audio data available. Please try recording again.');
-        setIsProcessing(false);
-        return;
+      // Convert blob to a File object for Supabase upload
+      const fileName = `${candidateId}_${questionId}_${recordingId}.${audioBlob.type.split('/')[1] || 'webm'}`;
+      const audioFile = blobToFile(audioBlob, fileName);
+      
+      // Upload to Supabase Storage
+      const storagePath = `${candidateId}/${fileName}`;
+      const audioUrlFromStorage = await uploadAudioFile(audioFile, storagePath);
+      
+      if (!audioUrlFromStorage) {
+        throw new Error('Failed to upload audio file to Supabase');
       }
       
       // Use an empty string if no transcript is available
       const transcript = realtimeTranscript || "";
       console.log('Using transcript:', transcript ? 'Available' : 'Empty');
       
-      // Save recording data to localStorage
+      // Add recording record to Supabase database
       const recordingData = {
+        candidateId,
+        questionId,
+        transcript: transcript,
+        audioUrl: audioUrlFromStorage,
+      };
+
+      const newRecordingId = await addRecording(recordingData);
+      
+      if (!newRecordingId) {
+        throw new Error('Failed to add recording record to Supabase');
+      }
+      
+      console.log('Recording saved successfully to Supabase:', newRecordingId);
+      
+      // Update audioUrl to point to the Supabase URL
+      setAudioUrl(audioUrlFromStorage);
+      
+      // During migration period, also save to localStorage as a backup
+      // This can be removed once migration is complete
+      const localRecordingData = {
         id: recordingId,
         candidateId,
         questionId,
         transcript: transcript,
-        audioUrl: base64Audio, // Store as base64 string
+        audioUrl: base64Audio, // Store as base64 string in localStorage
         createdAt: new Date().toISOString(),
       };
 
@@ -308,12 +329,10 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
       
       if (existingIndex >= 0) {
         // Update existing recording
-        console.log(`Updating existing recording at index ${existingIndex}`);
-        existingRecordings[existingIndex] = recordingData;
+        existingRecordings[existingIndex] = localRecordingData;
       } else {
         // Add new recording
-        console.log(`Adding new recording for question ${questionId}`);
-        existingRecordings.push(recordingData);
+        existingRecordings.push(localRecordingData);
       }
       
       // Save back to localStorage
@@ -322,17 +341,15 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
       // Call onRecordingComplete callback with the recorded data
       if (onRecordingComplete) {
         onRecordingComplete({
-          audioUrl: base64Audio,
+          audioUrl: audioUrlFromStorage,
           transcript: transcript,
           candidateId,
           questionId,
         });
       }
-      
-      console.log('Recording saved successfully:', recordingId);
     } catch (error) {
       console.error('Error saving recording:', error);
-      setAudioError('Error saving recording. Please try again.');
+      setAudioError(`Error saving recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsProcessing(false);
     }
@@ -343,106 +360,203 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
     setAudioError('Audio playback error. Try recording again.');
     
     // Try alternative playback methods if available
-    if (audioElementRef.current && audioBase64) {
-      console.log('Attempting to use base64 audio as fallback');
-      audioElementRef.current.src = audioBase64;
+    if (audioElementRef.current) {
+      if (audioBase64) {
+        console.log('Attempting to use base64 audio as fallback');
+        // Try data URL format
+        const dataUrl = `data:audio/webm;base64,${audioBase64}`;
+        audioElementRef.current.src = dataUrl;
+        audioElementRef.current.load();
+        audioElementRef.current.play().catch(err => {
+          console.error('Error playing base64 audio:', err);
+        });
+      } else if (audioBlob) {
+        // Try recreating the blob URL
+        console.log('Attempting to recreate blob URL');
+        const newUrl = URL.createObjectURL(audioBlob);
+        audioElementRef.current.src = newUrl;
+        audioElementRef.current.load();
+        audioElementRef.current.play().catch(err => {
+          console.error('Error playing recreated blob URL:', err);
+        });
+        
+        // Store the new URL for cleanup later
+        if (audioUrlRef.current) {
+          URL.revokeObjectURL(audioUrlRef.current);
+        }
+        audioUrlRef.current = newUrl;
+        setAudioUrl(newUrl);
+      }
     }
   };
 
-  // Initialize component - check for existing recordings
+  // Cleanup on unmount
   useEffect(() => {
-    checkExistingRecording();
-  }, []);
+    return () => {
+      // Stop any ongoing recording
+      if (mediaRecorderRef.current && isRecording) {
+        mediaRecorderRef.current.stop();
+        
+        // Clean up MediaRecorder tracks
+        if (mediaRecorderRef.current.stream) {
+          mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        }
+      }
+      
+      // Clear the timer
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+      
+      // Revoke object URL
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current);
+      }
+      
+      // Disconnect from Deepgram
+      disconnectFromDeepgram();
+    };
+  }, [isRecording, disconnectFromDeepgram]);
+
+  useEffect(() => {
+    if (questionId) {
+      checkExistingRecording();
+    }
+  }, [questionId, checkExistingRecording]);
 
   return (
-    <div className="w-full max-w-md">
-      <div className="flex flex-col space-y-4">
-        {!isRecording && !audioUrl && (
-          <button
-            onClick={handleStartRecording}
-            className="flex items-center justify-center w-full py-3 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition-colors"
-          >
-            <Mic className="w-5 h-5 mr-2" />
-            Start Recording
-          </button>
-        )}
-
-        {isRecording && (
-          <div className="flex flex-col items-center p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <div className="relative mb-4">
-              <motion.div
-                animate={{
-                  scale: [1, 1.2, 1],
-                }}
-                transition={{
-                  duration: 1.5,
-                  repeat: Infinity,
-                }}
-                className="flex items-center justify-center w-16 h-16 bg-red-500 rounded-full"
-              >
-                <Mic className="w-8 h-8 text-white" />
-              </motion.div>
-              <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-600 rounded-full flex items-center justify-center">
-                <div className="w-3 h-3 bg-red-100 rounded-full"></div>
-              </div>
-            </div>
-            <div className="text-xl font-bold mb-2">{formatTime(recordingTime)}</div>
-            <button
-              onClick={handleStopRecording}
-              className="flex items-center justify-center px-6 py-2 bg-gray-700 hover:bg-gray-800 text-white font-medium rounded-lg transition-colors"
+    <div className="flex flex-col space-y-4 w-full max-w-md mx-auto">
+      {/* Loading state */}
+      {isLoading && (
+        <div className="flex justify-center items-center py-4">
+          <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+          <span className="ml-2 text-gray-600">Loading recording...</span>
+        </div>
+      )}
+      
+      {/* Error display */}
+      {audioError && (
+        <div className="bg-red-50 border border-red-100 rounded-lg p-3 flex items-start">
+          <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 mr-2 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm text-red-600">{audioError}</p>
+            <button 
+              onClick={() => setAudioError(null)} 
+              className="text-xs text-red-500 mt-1 hover:underline"
             >
-              <Pause className="w-5 h-5 mr-2" />
-              Stop Recording
+              Dismiss
             </button>
           </div>
-        )}
-
-        {audioUrl && !isRecording && (
-          <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <div className="mb-2 font-medium">Preview your recording:</div>
+        </div>
+      )}
+      
+      {/* Recording visualizer */}
+      <div className="relative h-24 bg-gray-100 rounded-lg overflow-hidden">
+        {isRecording ? (
+          <motion.div
+            className="absolute inset-0 flex items-center justify-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+          >
+            <div className="w-full flex justify-center items-center space-x-1">
+              {[...Array(12)].map((_, i) => (
+                <motion.div
+                  key={i}
+                  className="w-1 bg-blue-500 rounded-full"
+                  animate={{
+                    height: [20, Math.random() * 60 + 10, 20],
+                  }}
+                  transition={{
+                    duration: 1.5,
+                    repeat: Infinity,
+                    repeatType: "reverse",
+                    delay: i * 0.05,
+                  }}
+                />
+              ))}
+            </div>
+            <div className="absolute top-2 right-2 px-2 py-1 bg-blue-100 rounded-full text-xs font-medium text-blue-800">
+              {formatTime(recordingTime)}
+            </div>
+          </motion.div>
+        ) : audioUrl ? (
+          <div className="absolute inset-0 flex items-center justify-center">
             <audio 
               ref={audioElementRef}
-              controls 
               src={audioUrl} 
-              className="w-full mb-4"
+              controls 
+              className="w-full max-w-xs" 
               onError={handleAudioError}
-            ></audio>
-            
-            {audioError && (
-              <div className="p-2 mb-4 bg-red-50 border border-red-200 rounded-md text-sm text-red-600">
-                {audioError}. <button 
-                  onClick={handleStartRecording} 
-                  className="text-blue-600 hover:underline"
-                >
-                  Try recording again
-                </button>
-              </div>
-            )}
-            
-            <div className="flex space-x-2">
-              <button
-                onClick={handleStartRecording}
-                className="flex-1 flex items-center justify-center px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors"
-              >
-                <RefreshCw className="w-4 h-4 mr-1" />
-                Re-record
-              </button>
-              <button
-                onClick={handleSaveRecording}
-                disabled={isProcessing || !!audioError}
-                className="flex-1 flex items-center justify-center px-3 py-2 bg-green-500 hover:bg-green-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isProcessing ? (
-                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4 mr-1" />
-                )}
-                {isProcessing ? "Saving..." : "Submit Recording"}
-              </button>
-            </div>
+            />
+          </div>
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-gray-400">
+            <p>Click record to start capturing your answer</p>
           </div>
         )}
       </div>
+
+      {/* Controls */}
+      <div className="flex justify-center space-x-4">
+        {isRecording ? (
+          <button
+            onClick={handleStopRecording}
+            className="flex items-center justify-center px-4 py-2 bg-red-600 text-white rounded-full hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+            disabled={isProcessing}
+          >
+            <Pause className="w-5 h-5 mr-2" />
+            Stop Recording
+          </button>
+        ) : (
+          <button
+            onClick={handleStartRecording}
+            className={`flex items-center justify-center px-4 py-2 ${
+              audioUrl ? 'bg-gray-600' : 'bg-blue-600'
+            } text-white rounded-full hover:bg-opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-500`}
+            disabled={isProcessing}
+          >
+            {audioUrl ? (
+              <>
+                <RefreshCw className="w-5 h-5 mr-2" />
+                Record Again
+              </>
+            ) : (
+              <>
+                <Mic className="w-5 h-5 mr-2" />
+                Start Recording
+              </>
+            )}
+          </button>
+        )}
+
+        {audioUrl && !isRecording && (
+          <button
+            onClick={handleSaveRecording}
+            className="flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-full hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+            disabled={isProcessing}
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Send className="w-5 h-5 mr-2" />
+                Save Response
+              </>
+            )}
+          </button>
+        )}
+      </div>
+      
+      {/* Transcription display */}
+      {realtimeTranscript && (
+        <div className="mt-2 p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <h3 className="text-sm font-medium text-gray-700 mb-2">Live Transcript:</h3>
+          <p className="text-gray-600 text-sm">{realtimeTranscript}</p>
+        </div>
+      )}
     </div>
   );
 }

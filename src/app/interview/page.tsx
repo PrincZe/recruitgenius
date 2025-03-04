@@ -4,9 +4,16 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
 import { Session, Question } from '@/lib/models/types';
+import { 
+  getQuestions, 
+  addCandidate, 
+  createSession 
+} from '@/lib/services/supabaseService';
+import { checkSupabaseConnection } from '@/lib/supabase/supabaseClient';
 import InterviewQuestionsClient from './[sessionId]/InterviewQuestionsClient';
+import { Loader2 } from 'lucide-react';
 
-// Demo questions to use if none exist in localStorage
+// Demo questions to use if supabase is not available
 const demoQuestions = [
   {
     id: "q1",
@@ -35,20 +42,40 @@ function HashRouter({ children }: { children: React.ReactNode }) {
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    // Initialize localStorage with demo data if needed
-    const ensureLocalStorageData = () => {
-      // Check if questions exist in localStorage
-      const questionsData = localStorage.getItem('questions');
-      if (!questionsData || JSON.parse(questionsData).length === 0) {
-        // If no questions exist, add demo questions
-        localStorage.setItem('questions', JSON.stringify(demoQuestions));
-        console.log('Added demo questions to localStorage');
+    // Initialize with data if needed
+    const initializeData = async () => {
+      try {
+        // Check Supabase connection
+        const connectionStatus = await checkSupabaseConnection();
+        console.log('Supabase connection status:', connectionStatus);
+        
+        // Ensure questions exist
+        const questions = await getQuestions();
+        if (questions.length === 0) {
+          console.log('No questions found in Supabase, fallback to localStorage');
+          
+          // Fallback to localStorage if Supabase has no questions
+          const questionsData = localStorage.getItem('questions');
+          if (!questionsData || JSON.parse(questionsData).length === 0) {
+            localStorage.setItem('questions', JSON.stringify(demoQuestions));
+            console.log('Added demo questions to localStorage');
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing data:', error);
+        
+        // Fallback to localStorage if Supabase fails
+        const questionsData = localStorage.getItem('questions');
+        if (!questionsData || JSON.parse(questionsData).length === 0) {
+          localStorage.setItem('questions', JSON.stringify(demoQuestions));
+          console.log('Added demo questions to localStorage');
+        }
       }
       
       setInitialized(true);
     };
     
-    ensureLocalStorageData();
+    initializeData();
   }, []);
 
   useEffect(() => {
@@ -93,68 +120,78 @@ function HashRouter({ children }: { children: React.ReactNode }) {
 export default function InterviewStartPage() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   
   useEffect(() => {
-    // Check if questions exist in localStorage
-    const questionsData = localStorage.getItem('questions');
-    if (!questionsData || JSON.parse(questionsData).length === 0) {
-      // If no questions exist, add demo questions
-      localStorage.setItem('questions', JSON.stringify(demoQuestions));
-      console.log('Added demo questions to localStorage');
-    }
+    // Initialize check - no longer needs to set localStorage directly
+    const checkConnection = async () => {
+      try {
+        const connectionStatus = await checkSupabaseConnection();
+        if (!connectionStatus.success) {
+          console.warn('Supabase connection failed. Using localStorage as fallback.');
+        }
+      } catch (error) {
+        console.error('Error checking Supabase connection:', error);
+      }
+    };
+    
+    checkConnection();
   }, []);
 
   const handleStartInterview = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
+    setError(null);
     
     try {
-      // Get questions from localStorage
-      const questionsData = localStorage.getItem('questions');
-      const questions: Question[] = questionsData ? JSON.parse(questionsData) : [];
+      // Get questions from Supabase
+      let questions = await getQuestions();
+      
+      // Fallback to localStorage if no questions in Supabase
+      if (questions.length === 0) {
+        const questionsData = localStorage.getItem('questions');
+        questions = questionsData ? JSON.parse(questionsData) : demoQuestions;
+      }
       
       if (questions.length === 0) {
         throw new Error('No questions available');
       }
 
-      // Create a new candidate
-      const candidateId = uuidv4();
-      const candidate = {
-        id: candidateId,
+      // Create a new candidate in Supabase
+      const candidateData = {
         name: fullName,
-        email: email,
-        createdAt: new Date().toISOString()
+        email: email
       };
-
-      // Save candidate to localStorage
-      const candidatesData = localStorage.getItem('candidates');
-      const candidates = candidatesData ? JSON.parse(candidatesData) : [];
-      candidates.push(candidate);
-      localStorage.setItem('candidates', JSON.stringify(candidates));
-
-      // Create a new session
-      const sessionId = uuidv4();
-      const session: Session = {
-        id: sessionId,
-        candidateId,
-        questions: questions.map((q: Question) => q.id),
-        progress: 0,
-        isCompleted: false,
-        createdAt: new Date().toISOString()
-      };
-
-      // Save session to localStorage
-      const sessionsData = localStorage.getItem('sessions');
-      const sessions = sessionsData ? JSON.parse(sessionsData) : [];
-      sessions.push(session);
-      localStorage.setItem('sessions', JSON.stringify(sessions));
-
-      // Navigate to the first question
-      // Use hash-based routing for static export compatibility
-      window.location.hash = `interview/${session.id}?q=0`;
+      
+      const candidateId = await addCandidate(candidateData);
+      
+      if (!candidateId) {
+        throw new Error('Failed to create candidate');
+      }
+      
+      // Store in localStorage for session recovery
+      localStorage.setItem('candidateId', candidateId);
+      
+      // Create a new session in Supabase
+      const questionIds = questions.map((q: Question) => q.id);
+      const sessionId = await createSession(candidateId, questionIds);
+      
+      if (!sessionId) {
+        throw new Error('Failed to create session');
+      }
+      
+      // Store the session ID for recovery
+      localStorage.setItem('sessionId', sessionId);
+      
+      // Navigate to the interview questions
+      window.location.hash = `interview/${sessionId}?q=0`;
     } catch (error) {
       console.error('Error starting interview:', error);
-      alert('An error occurred while starting the interview. Please try again.');
+      setError('An error occurred while starting the interview. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -168,6 +205,12 @@ export default function InterviewStartPage() {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+              <p className="text-sm text-red-600">{error}</p>
+            </div>
+          )}
+          
           <form className="space-y-6" onSubmit={handleStartInterview}>
             <div>
               <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">
@@ -206,9 +249,17 @@ export default function InterviewStartPage() {
             <div>
               <button
                 type="submit"
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                disabled={isSubmitting}
+                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
               >
-                Start Interview
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Setting up your interview...
+                  </>
+                ) : (
+                  'Start Interview'
+                )}
               </button>
             </div>
           </form>

@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, AlertCircle } from 'lucide-react';
 import { Recording, Question, Candidate } from '@/lib/models/types';
+import { useState } from 'react';
 
 export function RecordingsTab({ 
   recordings, 
@@ -13,6 +14,8 @@ export function RecordingsTab({
   questions: Question[],
   candidates: Candidate[]
 }) {
+  const [audioErrors, setAudioErrors] = useState<Record<string, boolean>>({});
+
   // Helper function to get question text by ID
   const getQuestionText = (questionId: string) => {
     const question = questions.find(q => q.id === questionId);
@@ -23,6 +26,31 @@ export function RecordingsTab({
   const getCandidateName = (candidateId: string) => {
     const candidate = candidates.find(c => c.id === candidateId);
     return candidate ? candidate.name : 'Unknown candidate';
+  };
+
+  // Helper function to determine audio source display
+  const getAudioElement = (recording: Recording) => {
+    if (!recording.audioUrl) {
+      return <span className="text-red-500">Audio not available</span>;
+    }
+
+    // Check if this recording already had an error
+    if (audioErrors[recording.id]) {
+      return <span className="text-red-500 flex items-center"><AlertCircle className="w-4 h-4 mr-1" /> Audio unavailable</span>;
+    }
+
+    return (
+      <audio 
+        src={recording.audioUrl} 
+        controls 
+        className="w-48"
+        onError={(e) => {
+          console.error('Audio playback error:', e);
+          // Mark this recording as having an error
+          setAudioErrors(prev => ({...prev, [recording.id]: true}));
+        }}
+      />
+    );
   };
 
   return (
@@ -58,27 +86,7 @@ export function RecordingsTab({
                     {getQuestionText(recording.questionId)}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-500">
-                    {recording.audioUrl && recording.audioUrl.startsWith('data:audio') ? (
-                      <audio 
-                        src={recording.audioUrl} 
-                        controls 
-                        className="w-48"
-                        onError={(e) => {
-                          console.error('Audio playback error:', e);
-                          // Set fallback text when audio fails to load
-                          const target = e.target as HTMLAudioElement;
-                          target.style.display = 'none';
-                          target.parentElement?.appendChild(
-                            Object.assign(document.createElement('div'), {
-                              className: 'text-red-500 text-xs',
-                              textContent: 'Audio playback error'
-                            })
-                          );
-                        }}
-                      />
-                    ) : (
-                      <span className="text-red-500">Audio not available</span>
-                    )}
+                    {getAudioElement(recording)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(recording.createdAt).toLocaleDateString()}
