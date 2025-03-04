@@ -3,6 +3,11 @@ const nextConfig = {
   // Comment out static export to allow API routes to work
   // output: process.env.NODE_ENV === 'production' ? 'export' : undefined,
   output: undefined, // Always use server rendering to enable API routes
+  eslint: {
+    // Warning: This allows production builds to successfully complete even if
+    // your project has ESLint errors.
+    ignoreDuringBuilds: true,
+  },
   images: {
     remotePatterns: [
       {

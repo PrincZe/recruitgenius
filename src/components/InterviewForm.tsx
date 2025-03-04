@@ -355,7 +355,7 @@ export default function InterviewForm() {
             <div>
               <h3 className="text-lg font-medium text-green-800">Ready to submit your interview?</h3>
               <p className="text-green-700 mb-4">
-                You've completed all questions. Review your responses before submitting.
+                You&apos;ve completed all questions. Review your responses before submitting.
               </p>
               <button 
                 className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
