@@ -13,20 +13,16 @@ if (!supabaseUrl || !supabaseAnonKey) {
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Helper function to check if Supabase is properly configured
-export async function checkSupabaseConnection() {
+export async function checkSupabaseConnection(): Promise<boolean> {
   try {
     // Try to fetch a simple query to check connection
     const { data, error } = await supabase.from('questions').select('count');
     
     if (error) throw error;
     
-    return { success: true, message: 'Supabase connection successful' };
+    return true;
   } catch (error: any) {
     console.error('Supabase connection error:', error);
-    return { 
-      success: false, 
-      message: 'Supabase connection failed', 
-      error: error.message || 'Unknown error'
-    };
+    return false;
   }
 } 

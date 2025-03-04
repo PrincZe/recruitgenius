@@ -11,9 +11,14 @@ export default function TestSupabasePage() {
   useEffect(() => {
     async function testConnection() {
       try {
-        const connectionResult = await checkSupabaseConnection();
-        setResult(connectionResult);
-        setStatus(connectionResult.success ? 'success' : 'error');
+        const connectionSuccess = await checkSupabaseConnection();
+        setResult({ 
+          success: connectionSuccess, 
+          message: connectionSuccess 
+            ? 'Supabase connection successful' 
+            : 'Supabase connection failed'
+        });
+        setStatus(connectionSuccess ? 'success' : 'error');
       } catch (error) {
         console.error('Error testing Supabase connection:', error);
         setResult({ success: false, message: 'Unexpected error occurred', error: String(error) });
@@ -38,43 +43,44 @@ export default function TestSupabasePage() {
         
         {status === 'error' && (
           <div className="bg-red-50 p-4 rounded-md mb-4">
-            <h2 className="text-lg font-medium text-red-800 mb-2">Connection Error</h2>
-            <p className="text-red-700">{result?.error || 'Unknown error'}</p>
-            <div className="mt-4 p-3 bg-gray-100 rounded-md overflow-auto">
-              <p className="text-sm font-mono">
-                Check your .env.local file and make sure your Supabase environment variables are set correctly:
-              </p>
-              <ul className="mt-2 text-sm font-mono space-y-1">
-                <li>NEXT_PUBLIC_SUPABASE_URL</li>
-                <li>NEXT_PUBLIC_SUPABASE_ANON_KEY</li>
-              </ul>
-            </div>
+            <h2 className="text-lg font-semibold text-red-800 mb-2">Connection Error</h2>
+            <p className="text-red-700 mb-3">{result?.message}</p>
+            {result?.error && (
+              <div className="bg-red-100 p-3 rounded text-sm text-red-800 font-mono overflow-auto">
+                {result.error}
+              </div>
+            )}
           </div>
         )}
         
         {status === 'success' && (
           <div className="bg-green-50 p-4 rounded-md mb-4">
-            <h2 className="text-lg font-medium text-green-800 mb-2">Connection Successful!</h2>
-            <p className="text-green-700 mb-4">Your Supabase connection is working correctly.</p>
+            <h2 className="text-lg font-semibold text-green-800 mb-2">Connection Successful</h2>
+            <p className="text-green-700">{result?.message}</p>
           </div>
         )}
         
-        <div className="mt-6 space-y-3">
-          <Link 
-            href="/"
-            className="block w-full text-center py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
-            Return to Home
-          </Link>
+        <div className="mt-6 border-t pt-4">
+          <p className="mb-4">
+            Make sure you have:
+          </p>
+          <ul className="list-disc list-inside text-sm text-gray-700 space-y-1 mb-6">
+            <li>Set up your Supabase project</li>
+            <li>Added the correct environment variables in .env.local</li>
+            <li>Created the required tables in your Supabase database</li>
+          </ul>
           
-          <Link
-            href="https://app.supabase.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block w-full text-center py-2 px-4 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
-          >
-            Open Supabase Dashboard
-          </Link>
+          <div className="flex justify-between">
+            <Link href="/" className="text-blue-600 hover:text-blue-800">
+              Back to Home
+            </Link>
+            <button 
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Test Again
+            </button>
+          </div>
         </div>
       </div>
     </div>
