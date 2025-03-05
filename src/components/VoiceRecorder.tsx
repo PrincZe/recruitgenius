@@ -285,12 +285,15 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
         throw new Error('No audio data available');
       }
       
-      // Create a unique filename
+      // Create a unique filename with timestamp to avoid collisions
       const timestamp = new Date().getTime();
-      const filename = `${currentCandidateId}_${questionId}_${timestamp}.webm`;
+      const randomString = Math.random().toString(36).substring(2, 10);
+      const filename = `${currentCandidateId}_${questionId}_${timestamp}_${randomString}.webm`;
       
       // Convert blob to file
       const file = blobToFile(blob, filename);
+      
+      console.log(`Uploading recording to Supabase Storage: ${filename}`);
       
       // Upload to Supabase Storage
       const { data, error: uploadError } = await supabase.storage
@@ -301,6 +304,7 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
         });
       
       if (uploadError) {
+        console.error('Supabase storage upload error:', uploadError);
         throw new Error(`Supabase upload error: ${uploadError.message}`);
       }
       
@@ -311,19 +315,32 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
       
       console.log('Recording saved to Supabase Storage:', publicUrl);
       
-      // Save recording information to Supabase Database using the service function
-      const recordingId = await addRecording({
-        candidateId: currentCandidateId,
-        questionId: questionId,
-        transcript: '',
-        audioUrl: publicUrl,
-        notes: ''
-      });
+      // Insert record into the recordings table with EXACT column names matching the database
+      console.log('Saving record to recordings table with candidate_id:', currentCandidateId, 'and question_id:', questionId);
       
-      if (!recordingId) {
-        console.warn('Failed to save recording to Supabase database, but audio file was uploaded');
+      const { data: insertData, error: insertError } = await supabase
+        .from('recordings')
+        .insert({
+          audio_url: publicUrl,
+          candidate_id: currentCandidateId,
+          question_id: questionId,
+          transcript: '',
+          created_at: new Date().toISOString()
+        })
+        .select();
+      
+      if (insertError) {
+        console.error('Error inserting into recordings table:', insertError);
+        // Try more verbose logging to debug the issue
+        console.log('Attempted to insert record with data:', {
+          audio_url: publicUrl,
+          candidate_id: currentCandidateId,
+          question_id: questionId,
+          transcript: '',
+          created_at: new Date().toISOString()
+        });
       } else {
-        console.log('Recording saved to Supabase database with ID:', recordingId);
+        console.log('Successfully inserted record into recordings table:', insertData);
       }
       
       // Store in local storage as fallback
@@ -341,10 +358,10 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
         );
         
         const recordingObj = {
-          id: recordingId || `recording_${timestamp}`,
+          id: insertData?.[0]?.id || `recording_${timestamp}`,
           candidateId: currentCandidateId,
           questionId: questionId,
-          transcript: null,
+          transcript: '',
           audioUrl: publicUrl,
           createdAt: new Date().toISOString()
         };
