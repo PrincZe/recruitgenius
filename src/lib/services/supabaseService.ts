@@ -188,13 +188,21 @@ export const addCandidate = async (candidate: Omit<Candidate, 'id' | 'createdAt'
 // Recording Service
 export const getRecordings = async (): Promise<Recording[]> => {
   try {
+    console.log('Fetching all recordings from Supabase...');
+    
     const { data, error } = await supabase
       .from('recordings')
       .select('*')
       .order('created_at', { ascending: false });
     
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase error fetching recordings:', error);
+      throw error;
+    }
     
+    console.log(`Retrieved ${data?.length || 0} recordings from Supabase`);
+    
+    // Map database columns to model properties
     return data ? data.map(item => mapDbToModel<Recording>(item, recordingColumnMapping)) : [];
   } catch (error) {
     console.error('Error getting recordings:', error);
@@ -204,14 +212,22 @@ export const getRecordings = async (): Promise<Recording[]> => {
 
 export const getRecordingsByCandidate = async (candidateId: string): Promise<Recording[]> => {
   try {
+    console.log(`Fetching recordings for candidate ${candidateId} from Supabase...`);
+    
     const { data, error } = await supabase
       .from('recordings')
       .select('*')
       .eq('candidate_id', candidateId)
       .order('created_at', { ascending: false });
     
-    if (error) throw error;
+    if (error) {
+      console.error(`Supabase error fetching recordings for candidate ${candidateId}:`, error);
+      throw error;
+    }
     
+    console.log(`Retrieved ${data?.length || 0} recordings for candidate ${candidateId} from Supabase`);
+    
+    // Map database columns to model properties
     return data ? data.map(item => mapDbToModel<Recording>(item, recordingColumnMapping)) : [];
   } catch (error) {
     console.error(`Error getting recordings for candidate ${candidateId}:`, error);
@@ -250,6 +266,8 @@ export const getRecordingsByQuestion = async (questionId: string): Promise<Recor
 
 export const addRecording = async (recording: Omit<Recording, 'id' | 'createdAt'>): Promise<string | null> => {
   try {
+    console.log('Adding a new recording to Supabase database...');
+    
     // Map model properties to database columns
     const dbRecording: any = {};
     for (const [modelKey, dbKey] of Object.entries(recordingColumnMapping)) {
@@ -258,15 +276,29 @@ export const addRecording = async (recording: Omit<Recording, 'id' | 'createdAt'
       }
     }
     
-    // Add created_at field
-    dbRecording.created_at = new Date().toISOString();
+    // Add created_at field if not present
+    if (!dbRecording.created_at) {
+      dbRecording.created_at = new Date().toISOString();
+    }
+    
+    // Add an ID if not present
+    if (!dbRecording.id) {
+      dbRecording.id = `recording_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    }
+    
+    console.log('Saving recording to Supabase:', dbRecording);
     
     const { data, error } = await supabase
       .from('recordings')
       .insert([dbRecording])
       .select();
     
-    if (error) throw error;
+    if (error) {
+      console.error('Error adding recording to Supabase:', error);
+      throw error;
+    }
+    
+    console.log('Recording added successfully to Supabase database');
     return data?.[0]?.id || null;
   } catch (error) {
     console.error('Error adding recording:', error);

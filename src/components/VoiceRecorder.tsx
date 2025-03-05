@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/supabaseClient';
 import { Mic, Square, RefreshCw, AlertCircle } from 'lucide-react';
+import { addRecording } from '@/lib/services/supabaseService';
 
 interface VoiceRecorderProps {
   questionId: string;
@@ -291,7 +292,7 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
       // Convert blob to file
       const file = blobToFile(blob, filename);
       
-      // Upload to Supabase
+      // Upload to Supabase Storage
       const { data, error: uploadError } = await supabase.storage
         .from('recordings')
         .upload(filename, file, {
@@ -308,12 +309,53 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
         .from('recordings')
         .getPublicUrl(filename);
       
-      console.log('Recording saved to Supabase:', publicUrl);
+      console.log('Recording saved to Supabase Storage:', publicUrl);
+      
+      // Save recording information to Supabase Database using the service function
+      const recordingId = await addRecording({
+        candidateId: currentCandidateId,
+        questionId: questionId,
+        transcript: '',
+        audioUrl: publicUrl,
+        notes: ''
+      });
+      
+      if (!recordingId) {
+        console.warn('Failed to save recording to Supabase database, but audio file was uploaded');
+      } else {
+        console.log('Recording saved to Supabase database with ID:', recordingId);
+      }
       
       // Store in local storage as fallback
       const audioBase64 = await blobToBase64(blob);
       try {
         localStorage.setItem(`recording_${currentCandidateId}_${questionId}`, audioBase64);
+        
+        // Add to recordings collection in localStorage
+        const recordingsJson = localStorage.getItem('recordings');
+        let recordings = recordingsJson ? JSON.parse(recordingsJson) : [];
+        
+        // Check if this recording already exists
+        const existingIndex = recordings.findIndex(
+          (r: any) => r.candidateId === currentCandidateId && r.questionId === questionId
+        );
+        
+        const recordingObj = {
+          id: recordingId || `recording_${timestamp}`,
+          candidateId: currentCandidateId,
+          questionId: questionId,
+          transcript: null,
+          audioUrl: publicUrl,
+          createdAt: new Date().toISOString()
+        };
+        
+        if (existingIndex >= 0) {
+          recordings[existingIndex] = recordingObj;
+        } else {
+          recordings.push(recordingObj);
+        }
+        
+        localStorage.setItem('recordings', JSON.stringify(recordings));
       } catch (localStorageError) {
         console.warn('Failed to save to localStorage (may be too large):', localStorageError);
       }
