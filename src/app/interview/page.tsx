@@ -20,7 +20,7 @@ export default function InterviewStartPage() {
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const [isCheckingConnection, setIsCheckingConnection] = useState(true);
-
+  
   // Check Supabase connection on load
   useEffect(() => {
     async function checkConnection() {
@@ -154,34 +154,34 @@ export default function InterviewStartPage() {
           
           <div className="space-y-2">
             <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">Full Name</label>
-            <input
-              id="fullName"
-              type="text"
+                <input
+                  id="fullName"
+                  type="text"
               placeholder="Enter your full name"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
               required
               disabled={isSubmitting}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          
+                />
+            </div>
+
           <div className="space-y-2">
             <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email Address</label>
-            <input
-              id="email"
-              type="email"
+                <input
+                  id="email"
+                  type="email"
               placeholder="Enter your email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
               required
               disabled={isSubmitting}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          
-          <button 
-            type="submit" 
+                />
+            </div>
+
+              <button
+                type="submit"
             disabled={isSubmitting}
             className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
           >
@@ -193,8 +193,8 @@ export default function InterviewStartPage() {
             ) : (
               'Start Interview'
             )}
-          </button>
-        </form>
+              </button>
+          </form>
       </div>
     </div>
   );

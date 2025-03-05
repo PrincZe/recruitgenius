@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ChevronRight, AlertCircle } from 'lucide-react';
+import { ChevronRight, AlertCircle, Filter } from 'lucide-react';
 import { Recording, Question, Candidate } from '@/lib/models/types';
 import { useState } from 'react';
 
@@ -15,6 +15,12 @@ export function RecordingsTab({
   candidates: Candidate[]
 }) {
   const [audioErrors, setAudioErrors] = useState<Record<string, boolean>>({});
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+
+  // Filter recordings based on selected candidate
+  const filteredRecordings = selectedCandidateId 
+    ? recordings.filter(r => r.candidateId === selectedCandidateId)
+    : recordings;
 
   // Helper function to get question text by ID
   const getQuestionText = (questionId: string) => {
@@ -57,9 +63,24 @@ export function RecordingsTab({
     <div>
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-semibold text-gray-800">Candidate Recordings</h2>
+        
+        {/* Candidate filter dropdown */}
+        <div className="flex items-center space-x-2">
+          <Filter className="w-4 h-4 text-gray-500" />
+          <select 
+            className="border border-gray-300 rounded-md px-3 py-2 text-sm"
+            value={selectedCandidateId || ''}
+            onChange={(e) => setSelectedCandidateId(e.target.value || null)}
+          >
+            <option value="">All Candidates</option>
+            {candidates.map(c => (
+              <option key={c.id} value={c.id}>{c.name || c.email || c.id}</option>
+            ))}
+          </select>
+        </div>
       </div>
       
-      {recordings.length === 0 ? (
+      {filteredRecordings.length === 0 ? (
         <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-lg">
           <p className="text-gray-500">No recordings available yet.</p>
           <p className="text-sm text-gray-400 mt-2">Candidates will appear here after they complete interviews.</p>
@@ -77,7 +98,7 @@ export function RecordingsTab({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {recordings.map((recording) => (
+              {filteredRecordings.map((recording) => (
                 <tr key={recording.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {getCandidateName(recording.candidateId)}

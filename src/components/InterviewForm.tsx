@@ -36,10 +36,11 @@ export default function InterviewForm() {
   // Generate a random candidate ID on component mount if one doesn't already exist
   useEffect(() => {
     const initializeCandidate = async () => {
-      const existingCandidateId = localStorage.getItem('candidateId');
+      // Use persistentCandidateId instead of candidateId for better persistence across sessions
+      const existingCandidateId = localStorage.getItem('persistentCandidateId');
       if (existingCandidateId) {
         setCandidateId(existingCandidateId);
-        console.log('Using existing candidate ID:', existingCandidateId);
+        console.log('Using existing persistent candidate ID:', existingCandidateId);
       } else {
         const newCandidateId = `candidate_${Math.floor(Math.random() * 1000000)}`;
         
@@ -49,9 +50,9 @@ export default function InterviewForm() {
           email: `anonymous_${newCandidateId}@example.com`,
         });
         
-        localStorage.setItem('candidateId', newCandidateId);
+        localStorage.setItem('persistentCandidateId', newCandidateId);
         setCandidateId(newCandidateId);
-        console.log('Generated new candidate ID:', newCandidateId);
+        console.log('Generated new persistent candidate ID:', newCandidateId);
       }
 
       // Load questions from Supabase
@@ -95,7 +96,7 @@ export default function InterviewForm() {
   const loadRecordings = useCallback(async () => {
     try {
       // Load recordings from Supabase (with localStorage as fallback during migration)
-      const currentCandidateId = candidateId || localStorage.getItem('candidateId');
+      const currentCandidateId = candidateId || localStorage.getItem('persistentCandidateId');
       console.log('Loading recordings for candidate:', currentCandidateId);
       
       if (!currentCandidateId) {

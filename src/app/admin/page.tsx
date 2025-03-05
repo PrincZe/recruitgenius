@@ -123,8 +123,26 @@ export default function AdminDashboard() {
     setActiveTab(value);
   };
 
-  const handleRefresh = () => {
-    fetchData();
+  const handleRefresh = async () => {
+    try {
+      setLoading(true);
+      await fetchData();
+      // Display success message
+      const refreshMessage = document.createElement('div');
+      refreshMessage.className = 'fixed top-4 right-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded';
+      refreshMessage.innerHTML = 'Data refreshed successfully!';
+      document.body.appendChild(refreshMessage);
+      
+      // Remove the message after 3 seconds
+      setTimeout(() => {
+        document.body.removeChild(refreshMessage);
+      }, 3000);
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      setError('Failed to refresh data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (loading) {
@@ -141,7 +159,7 @@ export default function AdminDashboard() {
         <h1 className="text-3xl font-bold">Admin Dashboard</h1>
         <button 
           onClick={handleRefresh}
-          className="px-4 py-2 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors flex items-center"
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center"
         >
           <Loader2 className="w-4 h-4 mr-2" />
           Refresh Data

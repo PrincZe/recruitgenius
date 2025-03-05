@@ -99,6 +99,15 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
     setRecordingSaved(false);
     audioChunksRef.current = [];
 
+    // Ensure candidateId is valid
+    if (!candidateId) {
+      const persistentId = localStorage.getItem('persistentCandidateId');
+      if (!persistentId) {
+        setError('No valid candidate ID found. Please refresh the page and try again.');
+        return;
+      }
+    }
+
     try {
       // Request microphone access with specific constraints for better audio quality
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -262,6 +271,12 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
     try {
       setIsUploading(true);
       
+      // Ensure we have a valid candidateId
+      const currentCandidateId = candidateId || localStorage.getItem('persistentCandidateId');
+      if (!currentCandidateId) {
+        throw new Error('No valid candidate ID found');
+      }
+      
       // Use provided blob or get it from the URL
       const blob = audioBlob || (audioUrl ? await fetch(audioUrl).then(r => r.blob()) : null);
       
@@ -271,7 +286,7 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
       
       // Create a unique filename
       const timestamp = new Date().getTime();
-      const filename = `${candidateId}_${questionId}_${timestamp}.webm`;
+      const filename = `${currentCandidateId}_${questionId}_${timestamp}.webm`;
       
       // Convert blob to file
       const file = blobToFile(blob, filename);
@@ -298,7 +313,7 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
       // Store in local storage as fallback
       const audioBase64 = await blobToBase64(blob);
       try {
-        localStorage.setItem(`recording_${candidateId}_${questionId}`, audioBase64);
+        localStorage.setItem(`recording_${currentCandidateId}_${questionId}`, audioBase64);
       } catch (localStorageError) {
         console.warn('Failed to save to localStorage (may be too large):', localStorageError);
       }
@@ -310,7 +325,7 @@ export default function VoiceRecorder({ questionId, candidateId, onRecordingComp
         onRecordingComplete({
           audioUrl: publicUrl,
           transcript: null, // No transcript yet
-          candidateId,
+          candidateId: currentCandidateId,
           questionId
         });
       }
