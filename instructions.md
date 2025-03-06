@@ -267,3 +267,61 @@
 - Create a dedicated transcription view/component for processing saved recordings
 - Enhance the admin dashboard to support both audio review and transcription review
 - Consider implementing batch transcription for archived recordings
+
+## Changelog: Fixed Supabase Recording Retrieval Issues (2025-03-07)
+
+### Issues Addressed:
+1. Recordings visible in Supabase Storage but not appearing in the admin dashboard
+2. Missing database entries for uploaded audio files in the recordings table
+3. Inconsistent candidate ID persistence across browser sessions
+4. Inability to retrieve previous recordings after starting a new session
+5. Disconnect between storage files and database records
+
+### Components Updated:
+
+#### 1. VoiceRecorder Component (`src/components/VoiceRecorder.tsx`):
+- Fixed the recording save process to properly insert records into the Supabase recordings table
+- Updated column naming to match database schema (`audio_url` instead of `audioUrl`)
+- Added validation to ensure valid candidate ID before recording or saving
+- Added comprehensive error logging to diagnose issues with Supabase operations
+- Improved filename generation with random strings to prevent collisions
+- Enhanced metadata association with recordings for proper retrieval
+
+#### 2. InterviewForm Component (`src/components/InterviewForm.tsx`):
+- Implemented persistent candidate ID storage using `persistentCandidateId` in localStorage
+- Modified the `loadRecordings` function to use the persistent ID for retrieval
+- Improved error handling for cases when no valid candidate ID is found
+- Enhanced session management to maintain consistent identity across browser sessions
+
+#### 3. Admin Dashboard (`src/app/admin/page.tsx`):
+- Added direct Supabase database querying, bypassing service layer for more reliable retrieval
+- Implemented proper mapping between database columns and application model properties
+- Added auto-refresh functionality to periodically update the dashboard data
+- Enhanced error handling and loading states for better user experience
+- Added debug functionality to help diagnose Supabase connection issues
+- Implemented a "Sync Storage Files" feature to create database entries for existing storage files
+
+#### 4. RecordingsTab Component (`src/components/admin/RecordingsTab.tsx`):
+- Added candidate filtering functionality to filter recordings by candidate
+- Improved audio element error handling to gracefully handle missing files
+- Enhanced the UI with better error states for audio playback issues
+
+#### 5. Supabase Service (`src/lib/services/supabaseService.ts`):
+- Added better error handling and logging for database operations
+- Enhanced `getRecordings` and `getRecordingsByCandidate` functions for more reliable retrieval
+- Implemented `addRecording` function with proper error handling and consistent data format
+
+### Current Status:
+- ✅ Phase 2 (Candidate Assessment Flow): Improved with reliable data persistence
+- ✅ Phase 3 (Admin Interface): Enhanced with robust data retrieval
+- ✅ Task 5 (Create Basic Data Storage): Fixed issues with Supabase integration
+- ✅ Task 7 (Enable Audio Processing Pipeline): Improved reliability of storage operations
+- ✅ Task 12 (Connecting dashboard to the data): Resolved data retrieval issues
+
+### Technical Notes:
+- The application now correctly associates recordings with candidates across sessions
+- Database entries are properly created for all recordings saved to storage
+- The admin dashboard can now reliably display recordings from previous sessions
+- The "Sync Storage Files" feature allows recovery of recordings that were previously missing database entries
+- Improved logging and debugging tools help diagnose any future issues
+- Candidate filtering provides better organization of recordings in the admin dashboard

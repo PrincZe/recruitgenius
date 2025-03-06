@@ -4,7 +4,13 @@ import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 import { Candidate } from '@/lib/models/types';
 
-export function CandidatesTab({ candidates }: { candidates: Candidate[] }) {
+export function CandidatesTab({ 
+  candidates,
+  onViewCandidate 
+}: { 
+  candidates: Candidate[],
+  onViewCandidate: (candidateId: string) => void 
+}) {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
@@ -31,21 +37,21 @@ export function CandidatesTab({ candidates }: { candidates: Candidate[] }) {
               {candidates.map((candidate) => (
                 <tr key={candidate.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {candidate.name}
+                    {candidate.name || 'Unnamed'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {candidate.email}
+                    {candidate.email || 'No email'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(candidate.createdAt).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 text-right text-sm font-medium">
-                    <Link 
-                      href={`/admin/candidates/${candidate.id}`}
+                    <button
+                      onClick={() => onViewCandidate(candidate.id)}
                       className="text-blue-600 hover:text-blue-900"
                     >
                       View <ChevronRight className="inline w-4 h-4" />
-                    </Link>
+                    </button>
                   </td>
                 </tr>
               ))}

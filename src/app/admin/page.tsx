@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Question, Candidate, Recording } from '@/lib/models/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
-import { Loader2, ChevronRight, User, FileQuestion, Mic, Plus } from 'lucide-react';
+import { Loader2, ChevronRight, User, FileQuestion, Mic, Plus, X } from 'lucide-react';
 import { CandidatesTab } from '@/components/admin/CandidatesTab';
 import { QuestionsTab } from '@/components/admin/QuestionsTab';
 import { RecordingsTab } from '@/components/admin/RecordingsTab';
@@ -56,25 +56,41 @@ export default function AdminDashboard() {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [showCandidateModal, setShowCandidateModal] = useState(false);
+  const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
+  const [candidateRecordings, setCandidateRecordings] = useState<Recording[]>([]);
 
   // Initialize data and fetch from Supabase
   useEffect(() => {
     fetchData();
     
-    // Set up an interval to refresh data every 30 seconds
-    const refreshInterval = setInterval(() => {
-      console.log('Auto-refreshing data...');
-      fetchData();
-    }, 30000);
+    // Set up an interval to refresh data if autoRefreshEnabled is true
+    let refreshInterval: NodeJS.Timeout | null = null;
     
-    // Clean up the interval when the component unmounts
-    return () => clearInterval(refreshInterval);
-  }, []);
+    if (autoRefreshEnabled) {
+      refreshInterval = setInterval(() => {
+        console.log('Auto-refreshing data...');
+        fetchData(true); // Pass true to preserve filters
+      }, 30000);
+    }
+    
+    // Clean up the interval when the component unmounts or when autoRefreshEnabled changes
+    return () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+    };
+  }, [autoRefreshEnabled]); // Re-run effect when autoRefreshEnabled changes
 
-  const fetchData = async () => {
+  const fetchData = async (preserveFilters = false) => {
     try {
       setLoading(true);
       setError(null);
+      
+      // Save the current selectedCandidateId if preserveFilters is true
+      const currentSelectedCandidateId = preserveFilters ? selectedCandidateId : null;
       
       console.log('Fetching data from Supabase...');
       
@@ -244,6 +260,12 @@ export default function AdminDashboard() {
           console.log('No recordings found in localStorage either');
         }
       }
+      
+      // After all data is fetched, restore the selectedCandidateId if preserveFilters is true
+      if (preserveFilters && currentSelectedCandidateId) {
+        setSelectedCandidateId(currentSelectedCandidateId);
+      }
+      
     } catch (error) {
       console.error('Error fetching data:', error);
       setError('Failed to load data. Please try refreshing the page.');
@@ -492,6 +514,37 @@ ${recordingsData && recordingsData.length > 0 ?
     }
   };
 
+  // Handler for changing selected candidate filter
+  const handleCandidateFilterChange = (candidateId: string | null) => {
+    setSelectedCandidateId(candidateId);
+    
+    // If a candidate is selected, automatically show their details
+    if (candidateId) {
+      handleViewCandidate(candidateId);
+    }
+  };
+
+  // Handler for viewing candidate details
+  const handleViewCandidate = (candidateId: string) => {
+    const candidate = candidates.find(c => c.id === candidateId);
+    if (candidate) {
+      setSelectedCandidate(candidate);
+      const filteredRecordings = recordings.filter(r => r.candidateId === candidateId);
+      setCandidateRecordings(filteredRecordings);
+      setShowCandidateModal(true);
+      
+      // Also update the filter to match this candidate
+      setSelectedCandidateId(candidateId);
+    }
+  };
+  
+  // Handler for closing the candidate modal
+  const handleCloseModal = () => {
+    setShowCandidateModal(false);
+    // Optionally reset the filter when closing the modal
+    // setSelectedCandidateId(null);
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -505,24 +558,41 @@ ${recordingsData && recordingsData.length > 0 ?
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">Admin Dashboard</h1>
         <div className="flex space-x-2">
-          <button 
-            onClick={handleSyncStorageToDatabase}
-            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center"
+          <div className="flex items-center space-x-2">
+            <label className="flex items-center cursor-pointer">
+              <div className="relative">
+                <input 
+                  type="checkbox" 
+                  className="sr-only" 
+                  checked={autoRefreshEnabled}
+                  onChange={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
+                />
+                <div className={`block w-10 h-6 rounded-full ${autoRefreshEnabled ? 'bg-blue-600' : 'bg-gray-300'}`}></div>
+                <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition ${autoRefreshEnabled ? 'transform translate-x-4' : ''}`}></div>
+              </div>
+              <span className="ml-2 text-sm font-medium text-gray-700">
+                Auto Refresh {autoRefreshEnabled ? 'On' : 'Off'}
+              </span>
+            </label>
+          </div>
+          <button
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded flex items-center"
+            onClick={() => handleRefresh()}
+            disabled={loading}
           >
-            Sync Storage Files
+            {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : 'Refresh Data'}
           </button>
-          <button 
+          <button
+            className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded"
             onClick={handleDebug}
-            className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors flex items-center"
           >
             Debug
           </button>
-          <button 
-            onClick={handleRefresh}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center"
+          <button
+            className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded"
+            onClick={handleSyncStorageToDatabase}
           >
-            <Loader2 className="w-4 h-4 mr-2" />
-            Refresh Data
+            Sync Storage Files
           </button>
         </div>
       </div>
@@ -557,7 +627,10 @@ ${recordingsData && recordingsData.length > 0 ?
         </TabsContent>
         
         <TabsContent value="candidates">
-          <CandidatesTab candidates={candidates} />
+          <CandidatesTab 
+            candidates={candidates} 
+            onViewCandidate={handleViewCandidate}
+          />
         </TabsContent>
         
         <TabsContent value="recordings">
@@ -565,9 +638,85 @@ ${recordingsData && recordingsData.length > 0 ?
             recordings={recordings} 
             questions={questions}
             candidates={candidates}
+            selectedCandidateId={selectedCandidateId}
+            onCandidateFilterChange={handleCandidateFilterChange}
+            onViewCandidate={handleViewCandidate}
           />
         </TabsContent>
       </Tabs>
+      
+      {/* Candidate Details Modal */}
+      {showCandidateModal && selectedCandidate && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-4xl max-h-[80vh] overflow-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold">{selectedCandidate.name || 'Unnamed Candidate'}</h2>
+                <button 
+                  onClick={handleCloseModal}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold mb-2">Candidate Information</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-500">Email</p>
+                    <p>{selectedCandidate.email || 'No email provided'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Created On</p>
+                    <p>{new Date(selectedCandidate.createdAt).toLocaleDateString()}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Recordings ({candidateRecordings.length})</h3>
+                {candidateRecordings.length === 0 ? (
+                  <p className="text-gray-500">No recordings available for this candidate.</p>
+                ) : (
+                  <div className="border rounded-lg divide-y">
+                    {candidateRecordings.map(recording => {
+                      const question = questions.find(q => q.id === recording.questionId);
+                      return (
+                        <div key={recording.id} className="p-4 hover:bg-gray-50">
+                          <div className="flex justify-between mb-2">
+                            <h4 className="font-medium">{question?.text || 'Unknown Question'}</h4>
+                            <span className="text-sm text-gray-500">
+                              {new Date(recording.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <div className="my-2">
+                            <audio src={recording.audioUrl} controls className="w-full" />
+                          </div>
+                          {recording.transcript && (
+                            <div className="mt-2">
+                              <p className="text-sm text-gray-500 font-medium">Transcript:</p>
+                              <p className="text-sm mt-1 bg-gray-50 p-2 rounded">{recording.transcript}</p>
+                            </div>
+                          )}
+                          <div className="mt-2 text-right">
+                            <Link 
+                              href={`/admin/recordings/${recording.id}`}
+                              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                            >
+                              View Details
+                            </Link>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

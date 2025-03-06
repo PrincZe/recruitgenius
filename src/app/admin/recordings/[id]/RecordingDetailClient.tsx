@@ -5,137 +5,120 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, ArrowLeft, Save } from 'lucide-react';
 import { Recording, Question, Candidate } from '@/lib/models/types';
+import { supabase } from '@/lib/supabase/supabaseClient';
 
-// Get recording from localStorage
+// Get recording from Supabase
 const getRecordingById = async (id: string): Promise<Recording | null> => {
   try {
-    // Try to get recordings from localStorage
-    const storedRecordings = localStorage.getItem('recordings');
-    if (storedRecordings) {
-      const recordings: Recording[] = JSON.parse(storedRecordings);
-      const recording = recordings.find(r => r.id === id);
-      if (recording) {
-        return recording;
-      }
+    const { data, error } = await supabase
+      .from('recordings')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) {
+      console.error('Error fetching recording:', error);
+      return null;
     }
     
-    // For the MVP demo, return a mock recording if id matches and not found in localStorage
-    if (id === 'demo-recording') {
-      return {
-        id: 'demo-recording',
-        candidateId: 'demo-candidate',
-        questionId: 'question1',
-        transcript: 'This is a mock transcript for demonstration purposes. In a real application, this would be the actual transcription of the candidate\'s response to the interview question.',
-        audioUrl: '#', // This would be a real audio URL in production
-        createdAt: new Date().toISOString(),
-        notes: 'Initial notes about this candidate response.'
-      };
+    if (!data) {
+      return null;
     }
-    return null;
+    
+    // Convert database format to application format
+    return {
+      id: data.id,
+      candidateId: data.candidate_id,
+      questionId: data.question_id,
+      audioUrl: data.audio_url,
+      transcript: data.transcript || '',
+      createdAt: data.created_at,
+      notes: data.notes || ''
+    };
   } catch (error) {
     console.error(`Error getting recording with ID ${id}:`, error);
     return null;
   }
 };
 
-// Get question from localStorage
+// Get question from Supabase
 const getQuestionById = async (id: string): Promise<Question | null> => {
   try {
-    // Try to get questions from localStorage
-    const storedQuestions = localStorage.getItem('questions');
-    if (storedQuestions) {
-      const questions: Question[] = JSON.parse(storedQuestions);
-      const question = questions.find(q => q.id === id);
-      if (question) {
-        return question;
-      }
+    const { data, error } = await supabase
+      .from('questions')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) {
+      console.error('Error fetching question:', error);
+      return null;
     }
     
-    // Return from demo questions if not found
-    const demoQuestions: Record<string, Question> = {
-      'question1': {
-        id: 'question1',
-        text: 'Tell me about your professional background and experience.',
-        category: 'Background',
-        createdAt: new Date().toISOString(),
-      },
-      'question2': {
-        id: 'question2',
-        text: 'Describe a challenging project you worked on and how you overcame obstacles.',
-        category: 'Experience',
-        createdAt: new Date().toISOString(),
-      },
-      'question3': {
-        id: 'question3',
-        text: 'Why are you interested in this position and what makes you a good fit?',
-        category: 'Motivation',
-        createdAt: new Date().toISOString(),
-      },
-    };
+    if (!data) {
+      return null;
+    }
     
-    return demoQuestions[id] || null;
+    // Convert database format to application format
+    return {
+      id: data.id,
+      text: data.text,
+      category: data.category || 'General',
+      createdAt: data.created_at
+    };
   } catch (error) {
     console.error(`Error getting question with ID ${id}:`, error);
     return null;
   }
 };
 
-// Get candidate from localStorage
+// Get candidate from Supabase
 const getCandidateById = async (id: string): Promise<Candidate | null> => {
   try {
-    // Try to get candidates from localStorage
-    const storedCandidates = localStorage.getItem('candidates');
-    if (storedCandidates) {
-      const candidates: Candidate[] = JSON.parse(storedCandidates);
-      const candidate = candidates.find(c => c.id === id);
-      if (candidate) {
-        return candidate;
-      }
+    const { data, error } = await supabase
+      .from('candidates')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) {
+      console.error('Error fetching candidate:', error);
+      return null;
     }
     
-    // Return demo candidate if id matches
-    if (id === 'demo-candidate') {
-      return {
-        id: 'demo-candidate',
-        name: 'Jane Smith',
-        email: 'jane.smith@example.com',
-        createdAt: new Date().toISOString(),
-        sessionId: 'demo-session',
-      };
+    if (!data) {
+      return null;
     }
     
-    return null;
+    // Convert database format to application format
+    return {
+      id: data.id,
+      name: data.name || '',
+      email: data.email || '',
+      createdAt: data.created_at
+    };
   } catch (error) {
     console.error(`Error getting candidate with ID ${id}:`, error);
     return null;
   }
 };
 
-// Update recording notes in localStorage
+// Update recording notes in Supabase
 const updateRecordingNotes = async (id: string, notes: string): Promise<boolean> => {
   try {
-    // Get recordings from localStorage
-    const storedRecordings = localStorage.getItem('recordings');
-    if (!storedRecordings) {
+    const { error } = await supabase
+      .from('recordings')
+      .update({ notes })
+      .eq('id', id);
+    
+    if (error) {
+      console.error('Error updating recording notes:', error);
       return false;
     }
-    
-    const recordings: Recording[] = JSON.parse(storedRecordings);
-    const recordingIndex = recordings.findIndex(r => r.id === id);
-    
-    if (recordingIndex === -1) {
-      return false;
-    }
-    
-    // Update the notes
-    recordings[recordingIndex].notes = notes;
-    
-    // Save back to localStorage
-    localStorage.setItem('recordings', JSON.stringify(recordings));
     
     return true;
   } catch (error) {
-    console.error(`Error updating notes for recording ${id}:`, error);
+    console.error(`Error updating notes for recording with ID ${id}:`, error);
     return false;
   }
 };
@@ -157,7 +140,7 @@ export default function RecordingDetailClient({ params }: { params: { id: string
         setLoading(true);
         setError(null);
         
-        // Get recording data from localStorage
+        // Get recording data from Supabase
         const recordingData = await getRecordingById(params.id);
         
         if (!recordingData) {
@@ -169,11 +152,11 @@ export default function RecordingDetailClient({ params }: { params: { id: string
         setRecording(recordingData);
         setNotes(recordingData.notes || '');
         
-        // Get related question data from localStorage
+        // Get related question data from Supabase
         const questionData = await getQuestionById(recordingData.questionId);
         setQuestion(questionData);
         
-        // Get related candidate data from localStorage
+        // Get related candidate data from Supabase
         const candidateData = await getCandidateById(recordingData.candidateId);
         setCandidate(candidateData);
       } catch (error) {
@@ -194,7 +177,7 @@ export default function RecordingDetailClient({ params }: { params: { id: string
       setIsSaving(true);
       setSaveSuccess(false);
       
-      // Update notes in localStorage
+      // Update notes in Supabase
       const success = await updateRecordingNotes(recording.id, notes);
       
       if (!success) {

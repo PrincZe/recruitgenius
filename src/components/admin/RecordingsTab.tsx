@@ -8,14 +8,19 @@ import { useState } from 'react';
 export function RecordingsTab({ 
   recordings, 
   questions, 
-  candidates 
+  candidates,
+  selectedCandidateId,
+  onCandidateFilterChange,
+  onViewCandidate
 }: { 
   recordings: Recording[],
   questions: Question[],
-  candidates: Candidate[]
+  candidates: Candidate[],
+  selectedCandidateId: string | null,
+  onCandidateFilterChange: (candidateId: string | null) => void,
+  onViewCandidate: (candidateId: string) => void
 }) {
   const [audioErrors, setAudioErrors] = useState<Record<string, boolean>>({});
-  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
 
   // Filter recordings based on selected candidate
   const filteredRecordings = selectedCandidateId 
@@ -70,7 +75,7 @@ export function RecordingsTab({
           <select 
             className="border border-gray-300 rounded-md px-3 py-2 text-sm"
             value={selectedCandidateId || ''}
-            onChange={(e) => setSelectedCandidateId(e.target.value || null)}
+            onChange={(e) => onCandidateFilterChange(e.target.value || null)}
           >
             <option value="">All Candidates</option>
             {candidates.map(c => (
@@ -101,7 +106,12 @@ export function RecordingsTab({
               {filteredRecordings.map((recording) => (
                 <tr key={recording.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {getCandidateName(recording.candidateId)}
+                    <button 
+                      onClick={() => onViewCandidate(recording.candidateId)}
+                      className="text-blue-600 hover:text-blue-800 underline"
+                    >
+                      {getCandidateName(recording.candidateId)}
+                    </button>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
                     {getQuestionText(recording.questionId)}
