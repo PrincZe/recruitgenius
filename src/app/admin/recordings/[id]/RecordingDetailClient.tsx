@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, ArrowLeft, Save } from 'lucide-react';
+import { Loader2, ArrowLeft, Save, RefreshCw } from 'lucide-react';
 import { Recording, Question, Candidate } from '@/lib/models/types';
 import { supabase } from '@/lib/supabase/supabaseClient';
 
@@ -133,6 +133,8 @@ export default function RecordingDetailClient({ params }: { params: { id: string
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [processingSuccess, setProcessingSuccess] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -202,6 +204,104 @@ export default function RecordingDetailClient({ params }: { params: { id: string
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleProcessRecording = async () => {
+    if (!recording || !recording.audioUrl) {
+      setError('No audio URL available for processing');
+      return;
+    }
+
+    try {
+      setProcessing(true);
+      setProcessingSuccess(false);
+      setError(null);
+
+      const response = await fetch('/api/recordings/process', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          recordingId: recording.id,
+          audioUrl: recording.audioUrl
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to process recording');
+      }
+
+      const data = await response.json();
+      
+      // Update the recording state with the new data
+      setRecording(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          transcript: data.transcript,
+          sentimentScore: data.sentimentScore,
+          sentimentType: data.sentimentType,
+          isProcessed: true
+        };
+      });
+      
+      setProcessingSuccess(true);
+    } catch (error) {
+      console.error('Error processing recording:', error);
+      setError(error instanceof Error ? error.message : 'An unknown error occurred');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  // Helper function to render sentiment score with color
+  const renderSentimentScore = (score: number | undefined) => {
+    if (score === undefined) return null;
+    
+    let color = 'text-gray-500';
+    
+    if (score > 0.5) color = 'text-green-500';
+    else if (score > 0) color = 'text-green-400';
+    else if (score === 0) color = 'text-gray-500';
+    else if (score > -0.5) color = 'text-red-400';
+    else color = 'text-red-500';
+    
+    return (
+      <span className={`font-medium ${color}`}>
+        {score.toFixed(2)}
+      </span>
+    );
+  };
+
+  // Helper function to render sentiment type with icon
+  const renderSentimentType = (type: string | undefined) => {
+    if (!type) return null;
+    
+    let icon = '😐';
+    let color = 'text-gray-500';
+    
+    switch (type.toLowerCase()) {
+      case 'positive':
+        icon = '😊';
+        color = 'text-green-500';
+        break;
+      case 'negative':
+        icon = '😟';
+        color = 'text-red-500';
+        break;
+      case 'neutral':
+        icon = '😐';
+        color = 'text-gray-500';
+        break;
+    }
+    
+    return (
+      <span className={`font-medium ${color}`}>
+        {icon} {type}
+      </span>
+    );
   };
 
   if (loading) {
@@ -362,6 +462,104 @@ export default function RecordingDetailClient({ params }: { params: { id: string
           </div>
         </div>
       </div>
+      
+      {recording && (
+        <div className="mb-8">
+          <h2 className="text-xl font-semibold mb-4">Audio Response</h2>
+          <div className="bg-white p-4 rounded-md shadow-sm mb-4">
+            <audio 
+              src={recording.audioUrl} 
+              controls 
+              className="w-full"
+              onError={(e) => {
+                console.error('Audio playback error:', e);
+                setError('Error playing audio. The audio file might be unavailable or in an unsupported format.');
+              }}
+            />
+          </div>
+        </div>
+      )}
+      
+      {/* Transcript and Sentiment Analysis Section */}
+      {recording && (
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">Transcript & Sentiment Analysis</h2>
+            <button
+              className={`px-4 py-2 rounded-md flex items-center ${
+                recording.isProcessed 
+                  ? 'bg-gray-200 text-gray-500' 
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
+              onClick={handleProcessRecording}
+              disabled={processing || recording.isProcessed}
+            >
+              {processing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : recording.isProcessed ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Processed
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Process Recording
+                </>
+              )}
+            </button>
+          </div>
+          
+          {processingSuccess && (
+            <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+              Recording processed successfully!
+            </div>
+          )}
+          
+          <div className="bg-white p-6 rounded-md shadow-sm mb-4">
+            <h3 className="text-md font-medium mb-2">Transcript</h3>
+            {recording.transcript ? (
+              <div className="bg-gray-50 p-4 rounded mb-4">
+                <p className="whitespace-pre-wrap">{recording.transcript}</p>
+              </div>
+            ) : (
+              <p className="text-gray-500 italic">
+                {recording.isProcessed 
+                  ? "No transcript was generated." 
+                  : "Click 'Process Recording' to generate a transcript."}
+              </p>
+            )}
+            
+            <h3 className="text-md font-medium mt-4 mb-2">Sentiment Analysis</h3>
+            {recording.sentimentScore !== undefined && recording.sentimentType ? (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500 mb-1">Sentiment Score</p>
+                  <p className="text-lg">
+                    {renderSentimentScore(recording.sentimentScore)}
+                    <span className="text-xs text-gray-500 ml-2">(-1 to 1 scale)</span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 mb-1">Overall Sentiment</p>
+                    <p className="text-lg">
+                      {renderSentimentType(recording.sentimentType)}
+                    </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-gray-500 italic">
+                {recording.isProcessed 
+                  ? "No sentiment analysis was generated." 
+                  : "Click 'Process Recording' to analyze sentiment."}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

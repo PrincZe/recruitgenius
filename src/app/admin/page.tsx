@@ -14,7 +14,8 @@ import {
   getCandidates, 
   getRecordings, 
   addQuestion, 
-  addCandidate 
+  addCandidate,
+  getRecordingsWithDetails
 } from '@/lib/services/supabaseService';
 import { supabase } from '@/lib/supabase/supabaseClient';
 
@@ -126,140 +127,9 @@ export default function AdminDashboard() {
         setCandidates(fetchedCandidates);
       }
       
-      // Get recordings directly from Supabase database
-      console.log('Attempting direct query to Supabase recordings table...');
-      
-      let fetchedRecordings: Recording[] = [];
-      
-      try {
-        // Direct database query, bypassing the service layer for debugging
-        const { data, error } = await supabase
-          .from('recordings')
-          .select('*')
-          .order('created_at', { ascending: false });
-          
-        if (error) {
-          console.error('Error in direct Supabase query:', error);
-        } else {
-          console.log(`Direct query found ${data?.length || 0} recordings`);
-          
-          if (data && data.length > 0) {
-            // Map database columns to model properties
-            fetchedRecordings = data.map(item => ({
-              id: item.id,
-              candidateId: item.candidate_id,
-              questionId: item.question_id,
-              transcript: item.transcript || '',
-              audioUrl: item.audio_url,
-              notes: item.notes || '',
-              createdAt: item.created_at
-            }));
-          }
-        }
-      } catch (directQueryError) {
-        console.error('Error during direct query:', directQueryError);
-      }
-      
-      // If direct query didn't work, try the service
-      if (fetchedRecordings.length === 0) {
-        console.log('Direct query failed or returned no results, trying service function...');
-        try {
-          const serviceRecordings = await getRecordings();
-          if (serviceRecordings.length > 0) {
-            console.log(`Service found ${serviceRecordings.length} recordings`);
-            fetchedRecordings = serviceRecordings;
-          }
-        } catch (serviceError) {
-          console.error('Error using service to get recordings:', serviceError);
-        }
-      }
-      
-      // If we found recordings, use them
-      if (fetchedRecordings.length > 0) {
-        setRecordings(fetchedRecordings);
-        console.log('Successfully set recordings from Supabase');
-      } else {
-        console.log('No recordings found in Supabase, checking localStorage as last resort');
-        
-        // Last resort: check localStorage
-        const recordingsJson = localStorage.getItem('recordings');
-        if (recordingsJson) {
-          try {
-            const localRecordings = JSON.parse(recordingsJson);
-            console.log(`Found ${localRecordings.length} recordings in localStorage`);
-            
-            // Try to migrate these to Supabase
-            console.log('Attempting to migrate localStorage recordings to Supabase...');
-            
-            for (const recording of localRecordings) {
-              try {
-                // Skip if no audioUrl (invalid recording)
-                if (!recording.audioUrl) {
-                  console.log('Skipping invalid recording without audioUrl');
-                  continue;
-                }
-                
-                // Format for Supabase
-                const recordingData = {
-                  id: recording.id || self.crypto.randomUUID?.() || `rec_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-                  candidate_id: recording.candidateId,
-                  question_id: recording.questionId,
-                  transcript: recording.transcript || '',
-                  audio_url: recording.audioUrl,
-                  created_at: recording.createdAt || new Date().toISOString(),
-                  notes: recording.notes || ''
-                };
-                
-                // Insert directly
-                const { error: insertError } = await supabase
-                  .from('recordings')
-                  .insert([recordingData]);
-                  
-                if (insertError) {
-                  console.error('Error migrating recording to Supabase:', insertError);
-                } else {
-                  console.log(`Successfully migrated recording ${recordingData.id} to Supabase`);
-                }
-              } catch (migrationError) {
-                console.error('Error during migration:', migrationError);
-              }
-            }
-            
-            // Check if migration succeeded
-            try {
-              const { data: migratedData } = await supabase
-                .from('recordings')
-                .select('*');
-                
-              if (migratedData && migratedData.length > 0) {
-                console.log(`Migration successful, found ${migratedData.length} recordings in Supabase after migration`);
-                
-                const mappedRecordings = migratedData.map(item => ({
-                  id: item.id,
-                  candidateId: item.candidate_id,
-                  questionId: item.question_id,
-                  transcript: item.transcript || '',
-                  audioUrl: item.audio_url,
-                  notes: item.notes || '',
-                  createdAt: item.created_at
-                }));
-                
-                setRecordings(mappedRecordings);
-                return; // Exit if migration successful
-              }
-            } catch (checkError) {
-              console.error('Error checking migration success:', checkError);
-            }
-            
-            // If we're here, migration failed or didn't produce results
-            setRecordings(localRecordings);
-          } catch (parseError) {
-            console.error('Error parsing localStorage recordings:', parseError);
-          }
-        } else {
-          console.log('No recordings found in localStorage either');
-        }
-      }
+      // Get recordings from Supabase with transcript and sentiment data
+      const fetchedRecordings = await getRecordingsWithDetails();
+      setRecordings(fetchedRecordings);
       
       // After all data is fetched, restore the selectedCandidateId if preserveFilters is true
       if (preserveFilters && currentSelectedCandidateId) {
@@ -545,6 +415,35 @@ ${recordingsData && recordingsData.length > 0 ?
     // setSelectedCandidateId(null);
   };
 
+  // Add a new helper function to render sentiment indicators
+  const renderSentimentIndicator = (sentimentScore?: number, sentimentType?: string) => {
+    if (sentimentScore === undefined || !sentimentType) return null;
+    
+    let icon = '😐';
+    let color = 'text-gray-500';
+    
+    switch (sentimentType.toLowerCase()) {
+      case 'positive':
+        icon = '😊';
+        color = 'text-green-500';
+        break;
+      case 'negative':
+        icon = '😟';
+        color = 'text-red-500';
+        break;
+      case 'neutral':
+        icon = '😐';
+        color = 'text-gray-500';
+        break;
+    }
+    
+    return (
+      <span className={`font-medium ${color} text-lg`} title={`Sentiment: ${sentimentType} (${sentimentScore.toFixed(2)})`}>
+        {icon}
+      </span>
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -685,7 +584,14 @@ ${recordingsData && recordingsData.length > 0 ?
                       return (
                         <div key={recording.id} className="p-4 hover:bg-gray-50">
                           <div className="flex justify-between mb-2">
-                            <h4 className="font-medium">{question?.text || 'Unknown Question'}</h4>
+                            <h4 className="font-medium">
+                              {question?.text || 'Unknown Question'}
+                              {recording.sentimentScore !== undefined && recording.sentimentType && (
+                                <span className="ml-2">
+                                  {renderSentimentIndicator(recording.sentimentScore, recording.sentimentType)}
+                                </span>
+                              )}
+                            </h4>
                             <span className="text-sm text-gray-500">
                               {new Date(recording.createdAt).toLocaleDateString()}
                             </span>

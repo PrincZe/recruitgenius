@@ -23,6 +23,9 @@ export interface Recording {
   transcript: string;
   audioUrl: string;
   notes?: string;
+  sentimentScore?: number;
+  sentimentType?: string;
+  isProcessed?: boolean;
   createdAt: string;
 }
 
@@ -60,6 +63,9 @@ export const recordingColumnMapping: Record<string, string> = {
   transcript: 'transcript',
   audioUrl: 'audio_url',
   notes: 'notes',
+  sentimentScore: 'sentiment_score',
+  sentimentType: 'sentiment_type',
+  isProcessed: 'is_processed',
   createdAt: 'created_at'
 };
 

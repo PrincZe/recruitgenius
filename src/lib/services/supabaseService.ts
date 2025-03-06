@@ -432,4 +432,108 @@ export const deleteRecording = async (id: string, storagePath: string): Promise<
     console.error('Exception deleting recording:', error);
     return false;
   }
+};
+
+// Add a new method to update recording with transcription and sentiment data
+export const updateRecordingTranscript = async (
+  id: string, 
+  transcript: string,
+  sentimentScore?: number,
+  sentimentType?: string
+): Promise<boolean> => {
+  try {
+    console.log(`Updating recording ${id} with transcript and sentiment data`);
+    
+    const updateData: any = {
+      transcript,
+      is_processed: true
+    };
+    
+    // Add sentiment data if available
+    if (sentimentScore !== undefined) {
+      updateData.sentiment_score = sentimentScore;
+    }
+    
+    if (sentimentType) {
+      updateData.sentiment_type = sentimentType;
+    }
+    
+    const { error } = await supabase
+      .from('recordings')
+      .update(updateData)
+      .eq('id', id);
+    
+    if (error) {
+      console.error(`Error updating recording ${id} with transcript:`, error);
+      throw error;
+    }
+    
+    console.log(`Successfully updated recording ${id} with transcript and sentiment data`);
+    return true;
+  } catch (error) {
+    console.error(`Error updating recording transcript for ID ${id}:`, error);
+    return false;
+  }
+};
+
+// Add a method to get unprocessed recordings
+export const getUnprocessedRecordings = async (): Promise<Recording[]> => {
+  try {
+    console.log('Fetching unprocessed recordings from Supabase...');
+    
+    const { data, error } = await supabase
+      .from('recordings')
+      .select('*')
+      .is('is_processed', null) // null or false
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Supabase error fetching unprocessed recordings:', error);
+      throw error;
+    }
+    
+    console.log(`Retrieved ${data?.length || 0} unprocessed recordings from Supabase`);
+    
+    // Map database columns to model properties
+    return data ? data.map(item => mapDbToModel<Recording>(item, recordingColumnMapping)) : [];
+  } catch (error) {
+    console.error('Error getting unprocessed recordings:', error);
+    return [];
+  }
+};
+
+// Modify the get recordings method to include transcripts and sentiment data
+// Replacing or adding to the existing getRecordings function
+export const getRecordingsWithDetails = async (): Promise<Recording[]> => {
+  try {
+    console.log('Fetching all recordings with details from Supabase...');
+    
+    const { data, error } = await supabase
+      .from('recordings')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Supabase error fetching recordings with details:', error);
+      throw error;
+    }
+    
+    console.log(`Retrieved ${data?.length || 0} recordings with details from Supabase`);
+    
+    // Map database columns to model properties and include transcript and sentiment data
+    return data ? data.map(item => {
+      const recording = mapDbToModel<Recording>(item, recordingColumnMapping);
+      
+      // Add transcript and sentiment data if they exist in the database row
+      recording.transcript = item.transcript || '';
+      recording.sentimentScore = item.sentiment_score;
+      recording.sentimentType = item.sentiment_type;
+      recording.isProcessed = item.is_processed === true;
+      
+      return recording;
+    }) : [];
+  } catch (error) {
+    console.error('Error getting recordings with details:', error);
+    return [];
+  }
 }; 
