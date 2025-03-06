@@ -25,6 +25,8 @@ export interface Recording {
   notes?: string;
   sentimentScore?: number;
   sentimentType?: string;
+  summary?: string;
+  topics?: Array<{topic: string, confidence: number}>;
   isProcessed?: boolean;
   createdAt: string;
 }
@@ -65,6 +67,8 @@ export const recordingColumnMapping: Record<string, string> = {
   notes: 'notes',
   sentimentScore: 'sentiment_score',
   sentimentType: 'sentiment_type',
+  summary: 'summary',
+  topics: 'topics',
   isProcessed: 'is_processed',
   createdAt: 'created_at'
 };

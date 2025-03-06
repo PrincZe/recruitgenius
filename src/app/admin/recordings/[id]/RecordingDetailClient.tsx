@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, ArrowLeft, Save, RefreshCw } from 'lucide-react';
+import { Loader2, ArrowLeft, Save, RefreshCw, Search } from 'lucide-react';
 import { Recording, Question, Candidate } from '@/lib/models/types';
 import { supabase } from '@/lib/supabase/supabaseClient';
 
@@ -129,12 +129,14 @@ export default function RecordingDetailClient({ params }: { params: { id: string
   const [question, setQuestion] = useState<Question | null>(null);
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [notes, setNotes] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [processingSuccess, setProcessingSuccess] = useState(false);
+  const [analyzingAnswer, setAnalyzingAnswer] = useState(false);
+  const [answerAnalysis, setAnswerAnalysis] = useState<any>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -176,7 +178,7 @@ export default function RecordingDetailClient({ params }: { params: { id: string
     if (!recording?.id) return;
 
     try {
-      setIsSaving(true);
+      setSaving(true);
       setSaveSuccess(false);
       
       // Update notes in Supabase
@@ -202,7 +204,7 @@ export default function RecordingDetailClient({ params }: { params: { id: string
       console.error('Error saving notes:', error);
       setError('An error occurred while saving notes.');
     } finally {
-      setIsSaving(false);
+      setSaving(false);
     }
   };
 
@@ -256,6 +258,47 @@ export default function RecordingDetailClient({ params }: { params: { id: string
     }
   };
 
+  const handleAnalyzeAnswer = async () => {
+    if (!recording?.transcript || !question?.text) {
+      setError('Recording transcript and question text are required for analysis');
+      return;
+    }
+
+    try {
+      setAnalyzingAnswer(true);
+      setError(null);
+
+      const response = await fetch('/api/openai/analyze-answer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          questionText: question.text,
+          answerText: recording.transcript
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to analyze answer');
+      }
+
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Analysis returned no results');
+      }
+      
+      setAnswerAnalysis(data.analysis);
+    } catch (error) {
+      console.error('Error analyzing answer:', error);
+      setError(error instanceof Error ? error.message : 'An unknown error occurred');
+    } finally {
+      setAnalyzingAnswer(false);
+    }
+  };
+
   // Helper function to render sentiment score with color
   const renderSentimentScore = (score: number | undefined) => {
     if (score === undefined) return null;
@@ -301,6 +344,35 @@ export default function RecordingDetailClient({ params }: { params: { id: string
       <span className={`font-medium ${color}`}>
         {icon} {type}
       </span>
+    );
+  };
+
+  // Helper function to render answer analysis score
+  const renderAnalysisScore = (score: number, label: string) => {
+    let color = 'bg-gray-200';
+    let textColor = 'text-gray-700';
+    
+    if (score >= 8) {
+      color = 'bg-green-500';
+      textColor = 'text-white';
+    } else if (score >= 6) {
+      color = 'bg-green-300';
+      textColor = 'text-green-800';
+    } else if (score >= 4) {
+      color = 'bg-yellow-300';
+      textColor = 'text-yellow-800';
+    } else {
+      color = 'bg-red-300';
+      textColor = 'text-red-800';
+    }
+    
+    return (
+      <div className="flex flex-col items-center">
+        <div className={`w-12 h-12 rounded-full flex items-center justify-center ${color} ${textColor} font-bold text-lg`}>
+          {score}
+        </div>
+        <span className="text-xs mt-1 text-center">{label}</span>
+      </div>
     );
   };
 
@@ -443,10 +515,10 @@ export default function RecordingDetailClient({ params }: { params: { id: string
             <div className="flex justify-end">
               <button
                 onClick={handleSaveNotes}
-                disabled={isSaving}
+                disabled={saving}
                 className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
               >
-                {isSaving ? (
+                {saving ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Saving...
@@ -545,9 +617,9 @@ export default function RecordingDetailClient({ params }: { params: { id: string
                 </div>
                 <div>
                   <p className="text-sm text-gray-500 mb-1">Overall Sentiment</p>
-                    <p className="text-lg">
-                      {renderSentimentType(recording.sentimentType)}
-                    </p>
+                  <p className="text-lg">
+                    {renderSentimentType(recording.sentimentType)}
+                  </p>
                 </div>
               </div>
             ) : (
@@ -556,6 +628,121 @@ export default function RecordingDetailClient({ params }: { params: { id: string
                   ? "No sentiment analysis was generated." 
                   : "Click 'Process Recording' to analyze sentiment."}
               </p>
+            )}
+            
+            {/* Summary Section */}
+            <h3 className="text-md font-medium mt-6 mb-2">Summary</h3>
+            {recording.summary ? (
+              <div className="bg-yellow-50 p-4 rounded mb-4 border border-yellow-200">
+                <p className="whitespace-pre-wrap">{recording.summary}</p>
+              </div>
+            ) : (
+              <p className="text-gray-500 italic">
+                {recording.isProcessed 
+                  ? "No summary was generated." 
+                  : "Click 'Process Recording' to generate a summary."}
+              </p>
+            )}
+            
+            {/* Topics Section */}
+            <h3 className="text-md font-medium mt-6 mb-2">Key Topics</h3>
+            {recording.topics && recording.topics.length > 0 ? (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {recording.topics.map((topic, index) => (
+                  <div key={index} className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm flex items-center">
+                    <span className="font-medium">{topic.topic}</span>
+                    <span className="ml-2 text-xs text-blue-600">
+                      {(topic.confidence * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 italic">
+                {recording.isProcessed 
+                  ? "No topics were detected." 
+                  : "Click 'Process Recording' to detect topics."}
+              </p>
+            )}
+            
+            {/* Answer Quality Analysis Section */}
+            <div className="flex items-center justify-between mt-8 mb-4">
+              <h3 className="text-xl font-semibold">Answer Quality Analysis</h3>
+              <button
+                className={`px-4 py-2 rounded-md flex items-center ${
+                  !recording.transcript || !question
+                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                    : 'bg-purple-600 text-white hover:bg-purple-700'
+                }`}
+                onClick={handleAnalyzeAnswer}
+                disabled={analyzingAnswer || !recording.transcript || !question}
+              >
+                {analyzingAnswer ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Search className="w-4 h-4 mr-2" />
+                    Analyze Answer Quality
+                  </>
+                )}
+              </button>
+            </div>
+            
+            {answerAnalysis ? (
+              <div className="bg-white p-6 rounded-md shadow-sm mb-4">
+                <div className="mb-6">
+                  <h4 className="font-medium text-gray-700 mb-3">Evaluation Scores</h4>
+                  <div className="grid grid-cols-5 gap-4">
+                    {renderAnalysisScore(answerAnalysis.relevanceScore, 'Relevance')}
+                    {renderAnalysisScore(answerAnalysis.completenessScore, 'Completeness')}
+                    {renderAnalysisScore(answerAnalysis.clarityScore, 'Clarity')}
+                    {renderAnalysisScore(answerAnalysis.specificityScore, 'Specificity')}
+                    {renderAnalysisScore(answerAnalysis.overallScore, 'Overall')}
+                  </div>
+                </div>
+                
+                <div className="mb-4">
+                  <h4 className="font-medium text-gray-700 mb-2">Summary</h4>
+                  <p className="bg-gray-50 p-3 rounded">{answerAnalysis.summary}</p>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <h4 className="font-medium text-green-700 mb-2">Strengths</h4>
+                    <ul className="list-disc pl-5 space-y-1">
+                      {answerAnalysis.strengths.map((strength: string, index: number) => (
+                        <li key={index} className="text-sm">{strength}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-amber-700 mb-2">Areas for Improvement</h4>
+                    <ul className="list-disc pl-5 space-y-1">
+                      {answerAnalysis.weaknesses.map((weakness: string, index: number) => (
+                        <li key={index} className="text-sm">{weakness}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white p-6 rounded-md shadow-sm mb-4 text-center py-8">
+                <p className="text-gray-500 mb-2">
+                  {!recording.transcript
+                    ? "Transcript is required for analysis."
+                    : !question
+                    ? "Question data is required for analysis."
+                    : "Click 'Analyze Answer Quality' to evaluate how well this answer addresses the interview question."}
+                </p>
+                {!recording.transcript && (
+                  <p className="text-sm text-gray-400">
+                    Process the recording first to generate a transcript.
+                  </p>
+                )}
+              </div>
             )}
           </div>
         </div>

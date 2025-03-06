@@ -439,10 +439,12 @@ export const updateRecordingTranscript = async (
   id: string, 
   transcript: string,
   sentimentScore?: number,
-  sentimentType?: string
+  sentimentType?: string,
+  summary?: string,
+  topics?: Array<{topic: string, confidence: number}>
 ): Promise<boolean> => {
   try {
-    console.log(`Updating recording ${id} with transcript and sentiment data`);
+    console.log(`Updating recording ${id} with transcript and analysis data`);
     
     const updateData: any = {
       transcript,
@@ -458,6 +460,16 @@ export const updateRecordingTranscript = async (
       updateData.sentiment_type = sentimentType;
     }
     
+    // Add summary if available
+    if (summary) {
+      updateData.summary = summary;
+    }
+    
+    // Add topics if available
+    if (topics && topics.length > 0) {
+      updateData.topics = topics;
+    }
+    
     const { error } = await supabase
       .from('recordings')
       .update(updateData)
@@ -468,7 +480,7 @@ export const updateRecordingTranscript = async (
       throw error;
     }
     
-    console.log(`Successfully updated recording ${id} with transcript and sentiment data`);
+    console.log(`Successfully updated recording ${id} with transcript and analysis data`);
     return true;
   } catch (error) {
     console.error(`Error updating recording transcript for ID ${id}:`, error);

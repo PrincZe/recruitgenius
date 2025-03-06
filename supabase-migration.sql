@@ -54,6 +54,32 @@ BEGIN
     END IF;
 END $$;
 
+-- Add summary column if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'recordings' 
+        AND column_name = 'summary'
+    ) THEN
+        ALTER TABLE recordings ADD COLUMN summary TEXT;
+    END IF;
+END $$;
+
+-- Add topics column if it doesn't exist (storing as JSON)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'recordings' 
+        AND column_name = 'topics'
+    ) THEN
+        ALTER TABLE recordings ADD COLUMN topics JSONB;
+    END IF;
+END $$;
+
 -- Create an index on the is_processed column for efficient querying
 CREATE INDEX IF NOT EXISTS idx_recordings_is_processed ON recordings (is_processed);
 

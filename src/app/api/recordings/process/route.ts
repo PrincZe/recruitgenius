@@ -44,12 +44,14 @@ export async function POST(req: NextRequest) {
     
     console.log(`Transcription successful. Updating recording ${recordingId} in database.`);
     
-    // Update the recording in Supabase with transcription and sentiment data
+    // Update the recording in Supabase with transcription, sentiment, summary and topics data
     const updateSuccess = await updateRecordingTranscript(
       recordingId, 
       transcriptionData.transcript,
       transcriptionData.sentimentScore,
-      transcriptionData.sentimentType
+      transcriptionData.sentimentType,
+      transcriptionData.summary,
+      transcriptionData.topics
     );
     
     if (!updateSuccess) {
@@ -60,14 +62,16 @@ export async function POST(req: NextRequest) {
       );
     }
     
-    console.log(`Recording ${recordingId} updated successfully with transcription and sentiment data`);
+    console.log(`Recording ${recordingId} updated successfully with transcription and analysis data`);
     
     return NextResponse.json({
       success: true,
       message: 'Recording processed successfully',
       transcript: transcriptionData.transcript,
       sentimentScore: transcriptionData.sentimentScore,
-      sentimentType: transcriptionData.sentimentType
+      sentimentType: transcriptionData.sentimentType,
+      summary: transcriptionData.summary,
+      topics: transcriptionData.topics
     });
   } catch (error) {
     console.error('Error processing recording:', error);

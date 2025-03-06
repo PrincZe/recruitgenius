@@ -605,6 +605,26 @@ ${recordingsData && recordingsData.length > 0 ?
                               <p className="text-sm mt-1 bg-gray-50 p-2 rounded">{recording.transcript}</p>
                             </div>
                           )}
+                          
+                          {recording.summary && (
+                            <div className="mt-2">
+                              <p className="text-sm text-gray-500 font-medium">Summary:</p>
+                              <p className="text-sm mt-1 bg-yellow-50 p-2 rounded border border-yellow-200">{recording.summary}</p>
+                            </div>
+                          )}
+                          
+                          {recording.topics && recording.topics.length > 0 && (
+                            <div className="mt-2">
+                              <p className="text-sm text-gray-500 font-medium">Key Topics:</p>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {recording.topics.map((topic, index) => (
+                                  <span key={index} className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs">
+                                    {topic.topic}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           <div className="mt-2 text-right">
                             <Link 
                               href={`/admin/recordings/${recording.id}`}
