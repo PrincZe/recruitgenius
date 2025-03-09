@@ -148,29 +148,8 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
       return;
     }
 
-    // Check authentication first
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    
-    if (sessionError) {
-      console.error('Authentication error:', sessionError);
-      alert('Authentication error: Please make sure you are logged in.');
-      return;
-    }
-    
-    const session = sessionData?.session;
-    
-    if (!session) {
-      console.error('No active session found. Please log in.');
-      alert('Not authenticated: Please log in before uploading files.');
-      return;
-    }
-    
-    console.log('User is authenticated:', {
-      userId: session.user.id,
-      email: session.user.email,
-      role: session.user.role,
-      authProvider: session.user.app_metadata?.provider || 'unknown'
-    });
+    // Authentication check removed - allowing anonymous uploads for the hackathon
+    console.log('Proceeding with upload without authentication (hackathon mode)');
 
     setUploading(true);
     const uploadedResumeIds: string[] = [];
