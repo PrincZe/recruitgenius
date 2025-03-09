@@ -123,6 +123,20 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const resumeId = uuidv4();
+        
+        // Make sure file.name exists and is valid
+        if (!file.name) {
+          console.error('File name is missing or undefined', file);
+          setFiles(prev => 
+            prev.map(f => 
+              f.id === file.id 
+                ? { ...f, status: 'error', error: 'File name is missing' } 
+                : f
+            )
+          );
+          continue; // Skip this file and proceed with the next one
+        }
+        
         const filePath = `${resumeId}/${file.name}`;
         
         // Update current file progress
@@ -152,6 +166,7 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
         }
 
         // 1. Upload file to Storage
+        console.log('Uploading file to path:', `private/${filePath}`);
         const { data: storageData, error: storageError } = await supabase.storage
           .from('resumes')
           .upload(`private/${filePath}`, file, {
@@ -160,6 +175,17 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
           });
 
         if (storageError) {
+          console.error('Storage upload error details:', {
+            message: storageError.message,
+            details: storageError,
+            path: `private/${filePath}`,
+            bucket: 'resumes',
+            fileInfo: {
+              name: file.name,
+              size: file.size,
+              type: file.type
+            }
+          });
           throw new Error(`Storage error: ${storageError.message}`);
         }
 

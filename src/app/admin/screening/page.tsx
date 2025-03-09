@@ -7,6 +7,7 @@ import { Loader2, Upload, FileText, Filter, CheckCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase/supabaseClient';
 import ResumeUploader from '@/components/resume/ResumeUploader';
 import { analyzeResume, getEvaluationsForJob } from '@/lib/services/resumeService';
+import { ensureResumesBucketPolicy } from '@/lib/supabase/createBucketPolicy';
 
 export default function ScreeningPage() {
   const [loading, setLoading] = useState(true);
@@ -16,6 +17,25 @@ export default function ScreeningPage() {
   const [analyzingResumes, setAnalyzingResumes] = useState(false);
   const [resumeEvaluations, setResumeEvaluations] = useState<any[]>([]);
   const [showResults, setShowResults] = useState(false);
+
+  // Initialize bucket and policies when component mounts
+  useEffect(() => {
+    const initBucketPolicies = async () => {
+      try {
+        // This will ensure the bucket exists and has the right policies
+        const result = await ensureResumesBucketPolicy();
+        if (result.error) {
+          console.error('Failed to set up bucket policies:', result.error);
+        } else {
+          console.log('Bucket policies successfully configured');
+        }
+      } catch (error) {
+        console.error('Error initializing bucket policies:', error);
+      }
+    };
+
+    initBucketPolicies();
+  }, []);
 
   // Fetch job postings on component mount
   useEffect(() => {

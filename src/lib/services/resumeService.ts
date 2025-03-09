@@ -50,7 +50,7 @@ export const analyzeResume = async (resumeId: string, jobPostingId: string): Pro
     }
     
     // 2. Extract text from resume PDF (placeholder - in a real app, use PDF.js or similar)
-    const resumeText = resume.content_text || "Resume text would be extracted here";
+    const resumeText = resume.content_text || "Could not extract text from the resume";
     
     // 3. Analyze with OpenAI API
     const dimensions = [

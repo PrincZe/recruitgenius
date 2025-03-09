@@ -24,6 +24,12 @@ export const extractTextFromPdf = async (file: File): Promise<string> => {
     // Simulating a slight delay to mimick processing time
     await new Promise(resolve => setTimeout(resolve, 1000));
     
+    // Check if file and file.name exist before proceeding
+    if (!file || !file.name) {
+      console.error('Invalid file object or missing filename');
+      return 'Error: Invalid file or missing filename';
+    }
+    
     // For demo purposes, return some dummy text based on the file name
     const fileName = file.name.toLowerCase();
     
