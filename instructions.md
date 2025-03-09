@@ -89,6 +89,57 @@
 
 ---
 
+## Phase 4: Resume Screening Feature (New)
+
+*   **Task 13: Set up Database Schema for Resume Screening**
+    *   Create job_postings table with fields for title, description, requirements
+    *   Create resumes table to store uploaded resume files and metadata
+    *   Create resume_evaluations table to store analysis results
+    *   Add necessary columns to existing tables (has_resume, resume_id, job_posting_id)
+    *   Set up evaluation_criteria table to store the 5-dimension evaluation matrix
+
+*   **Task 14: Create Storage Infrastructure**
+    *   Set up Supabase storage bucket for job descriptions
+    *   Set up Supabase storage bucket for candidate resumes
+    *   Create utility functions for file upload and retrieval
+
+*   **Task 15: Implement Admin Screening Page**
+    *   Build job description filter interface
+    *   Create resume upload functionality with progress indicator
+    *   Implement file validation (PDF only, size limits)
+    *   Design UX flow for submission and analysis
+
+*   **Task 16: Develop Resume Analysis API**
+    *   Create API route for OpenAI analysis of resumes against job descriptions
+    *   Implement extraction of text from PDF resumes
+    *   Design prompt engineering for accurate resume evaluation
+    *   Structure the 5-dimension scoring system (Ownership, Organisation Impact, etc.)
+    *   Map OpenAI analysis to the level system (4-8)
+
+*   **Task 17: Build Candidate Dashboard**
+    *   Create interface for viewing candidates with their scores
+    *   Implement multi-select functionality for candidates
+    *   Add "Send to Voice Interview" button with link generation
+    *   Design UI for displaying the 5-dimension evaluation results
+    *   Include sorting and filtering options
+
+*   **Task 18: Integrate with Existing Voice Interview Flow**
+    *   Connect selected candidates to interview session creation
+    *   Pass job posting context to interview sessions
+    *   Update voice interview UI to acknowledge resume screening context
+
+*   **Task 19: Comprehensive Evaluation View**
+    *   Create unified view of both resume and voice interview scores
+    *   Implement visualization of the 5-dimension evaluation
+    *   Add comparative analysis between candidates
+
+*   **Task 20: Data Population and Testing**
+    *   Upload and configure the Engineering Manager job description
+    *   Populate evaluation criteria from the provided matrix
+    *   Test the end-to-end flow with sample resumes
+
+---
+
 ## Environment Variables
 
 *   OPENAI_API_KEY=your_openai_key
@@ -383,3 +434,42 @@
 - Explore integration with ATS (Applicant Tracking Systems)
 - Add comparative analysis between candidates
 - Add export functionality for analysis results
+
+## Changelog: Resume Screening Feature Implementation (2025-03-10)
+
+### Features to Implement:
+1. Resume screening against job descriptions using OpenAI
+2. Five-dimension evaluation framework (Ownership, Organisation Impact, Independence & Score, Strategic Alignment, Skills)
+3. Job posting management
+4. Resume upload and processing
+5. Candidate selection for voice interviews
+6. Integrated dashboard for resume and voice scores
+
+### Data Structure Updates:
+1. New tables:
+   - job_postings - For storing job titles and descriptions
+   - resumes - For storing uploaded resume files and metadata
+   - resume_evaluations - For storing analysis results
+   - evaluation_criteria - For storing the 5-dimension evaluation matrix
+2. New columns:
+   - has_resume and resume_id in candidates table
+   - job_posting_id in sessions table
+3. New storage buckets:
+   - job_postings - For storing job description PDFs
+   - resumes - For storing candidate resume PDFs
+
+### Technical Implementation Plan:
+1. SQL migrations to create new tables and columns
+2. Upload and storage utilities for PDFs
+3. Text extraction from PDFs for analysis
+4. OpenAI integration for resume analysis
+5. UI for screening workflow
+6. Dashboard for candidate evaluation
+7. Integration with existing voice interview system
+
+### Next Steps:
+- Create and execute SQL migration scripts
+- Implement file upload handlers for PDFs
+- Develop the resume screening page with job description filtering
+- Build the candidate dashboard with selection functionality
+- Create the OpenAI analysis API for resume evaluation

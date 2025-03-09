@@ -9,6 +9,13 @@ export default function Navbar() {
 
   if (isLoading || !user) return null;
 
+  const adminLinks = [
+    { href: '/admin', label: 'Dashboard' },
+    { href: '/admin/screening', label: 'Resume Screening' },
+    { href: '/admin/candidates', label: 'Candidates' },
+    { href: '/admin/questions', label: 'Questions' },
+  ];
+
   return (
     <nav className="bg-white shadow-sm border-b">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -21,12 +28,15 @@ export default function Navbar() {
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
               {user.role === 'admin' ? (
-                <Link
-                  href="/admin"
-                  className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-                >
-                  Dashboard
-                </Link>
+                adminLinks.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+                  >
+                    {link.label}
+                  </Link>
+                ))
               ) : (
                 <Link
                   href="/interview"
