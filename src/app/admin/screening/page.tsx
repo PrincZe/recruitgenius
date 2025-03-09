@@ -24,8 +24,11 @@ export default function ScreeningPage() {
       try {
         // This will ensure the bucket exists and has the right policies
         const result = await ensureResumesBucketPolicy();
-        if (result.error) {
+        if ('error' in result && result.error) {
           console.error('Failed to set up bucket policies:', result.error);
+        } else if ('manualSetupRequired' in result && result.manualSetupRequired) {
+          console.log('Bucket policies successfully configured');
+          console.log('Please check the console for manual policy setup instructions');
         } else {
           console.log('Bucket policies successfully configured');
         }
