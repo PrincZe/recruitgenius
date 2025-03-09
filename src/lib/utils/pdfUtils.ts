@@ -24,16 +24,36 @@ export const extractTextFromPdf = async (file: File): Promise<string> => {
     // Simulating a slight delay to mimick processing time
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    // Check if file and file.name exist before proceeding
-    if (!file || !file.name) {
-      console.error('Invalid file object or missing filename');
-      return 'Error: Invalid file or missing filename';
+    // Check if file exists
+    if (!file) {
+      console.error('File object is null or undefined');
+      return 'Error: Invalid file object';
     }
     
-    // For demo purposes, return some dummy text based on the file name
-    const fileName = file.name.toLowerCase();
+    // Try to get the file name from different possible locations
+    let fileName = '';
+    if (file.name) {
+      fileName = file.name;
+    } else if ((file as any).originalName) {
+      fileName = (file as any).originalName;
+    } else {
+      console.warn('Could not find a valid file name, using generic text');
+      return `
+        Generic resume text for parsing.
+        Contains typical resume sections like:
+        - Experience
+        - Education
+        - Skills
+        This placeholder text is used when we can't determine the file name.
+      `;
+    }
     
-    if (fileName.includes('engineer') || fileName.includes('developer')) {
+    console.log('Extracting text from PDF with filename:', fileName);
+    
+    // For demo purposes, return some dummy text based on the file name
+    const fileNameLower = fileName.toLowerCase();
+    
+    if (fileNameLower.includes('engineer') || fileNameLower.includes('developer')) {
       return `
         John Doe
         Senior Software Engineer
@@ -65,7 +85,7 @@ export const extractTextFromPdf = async (file: File): Promise<string> => {
         • Process: Agile methodologies, CI/CD, code reviews
         • Soft skills: Communication, stakeholder management, cross-team collaboration
       `;
-    } else if (fileName.includes('manager') || fileName.includes('lead')) {
+    } else if (fileNameLower.includes('manager') || fileNameLower.includes('lead')) {
       return `
         Jane Smith
         Engineering Manager

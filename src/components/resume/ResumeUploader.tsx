@@ -17,6 +17,7 @@ interface FileWithPreview extends File {
   uploadProgress?: number;
   error?: string;
   status: 'pending' | 'uploading' | 'success' | 'error';
+  originalName: string;
 }
 
 export default function ResumeUploader({ jobPostingId, onUploadComplete }: ResumeUploaderProps) {
@@ -99,7 +100,8 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
         ...file,
         id: uuidv4(),
         status: 'pending' as const,
-        uploadProgress: 0
+        uploadProgress: 0,
+        originalName: file.name
       };
     });
 
@@ -130,6 +132,9 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
     const uploadedResumeIds: string[] = [];
     
     try {
+      // Create a deep copy of the files array to avoid reference issues
+      const filesToUpload = files.map(file => ({...file}));
+      
       // Update status of all files to uploading
       setFiles(prev => 
         prev.map(file => ({
@@ -140,12 +145,15 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
       );
 
       // Upload each file in sequence
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+      for (let i = 0; i < filesToUpload.length; i++) {
+        const file = filesToUpload[i];
         const resumeId = uuidv4();
         
-        // Make sure file.name exists and is valid
-        if (!file.name) {
+        // Use either the originalName (our backup) or the name property
+        const fileName = (file as any).originalName || file.name;
+        
+        // Make sure we have a valid filename
+        if (!fileName) {
           console.error('File name is missing or undefined', file);
           setFiles(prev => 
             prev.map(f => 
@@ -158,7 +166,7 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
         }
         
         // Create a safe filename without special characters that might cause issues
-        const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
         const filePath = `${resumeId}/${safeFileName}`;
         
         console.log(`Processing file: ${safeFileName}, size: ${file.size}, type: ${file.type}`);
@@ -195,9 +203,19 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
         // 1. Upload file to Storage
         console.log('Uploading file to path:', `private/${filePath}`);
         try {
+          // Create a clean File object to avoid any issues with extended properties
+          const fileBlob = file.slice(0, file.size, file.type);
+          const cleanFile = new File([fileBlob], safeFileName, {type: file.type});
+          
+          console.log('Created clean file object:', {
+            name: cleanFile.name,
+            size: cleanFile.size,
+            type: cleanFile.type
+          });
+          
           const { data: storageData, error: storageError } = await supabase.storage
             .from('resumes')
-            .upload(`private/${filePath}`, file, {
+            .upload(`private/${filePath}`, cleanFile, {
               cacheControl: '3600',
               upsert: false
             });
@@ -244,7 +262,7 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
                 {
                   id: resumeId,
                   file_url: fileUrl,
-                  file_name: file.name,
+                  file_name: fileName,
                   file_size: file.size,
                   content_text: contentText,
                   job_posting_id: jobPostingId
