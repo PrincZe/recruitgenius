@@ -8,8 +8,10 @@ export const createResumesBucketPolicy = async () => {
   console.log(`
     ===== MANUAL SUPABASE POLICY SETUP FOR HACKATHON MODE =====
     
-    Since this is a hackathon project, we'll set up policies that allow anyone to upload without authentication:
+    Since this is a hackathon project, we'll set up policies that allow anyone to access without authentication:
     
+    PART 1: STORAGE BUCKET POLICIES
+    -------------------------------
     1. Go to Storage > Buckets > resumes
     2. Click on "Policies" tab
     3. Delete any existing policies for the resumes bucket to start fresh
@@ -27,8 +29,32 @@ export const createResumesBucketPolicy = async () => {
     - Policy definition: true
     - Target roles: anon, authenticated (select both)
     
+    PART 2: DATABASE TABLE POLICIES
+    ------------------------------
+    1. Go to Authentication > Policies
+    2. Select the "resumes" table from the dropdown
+    3. Create the following policies:
+    
+    POLICY 1 - Allow anyone to insert resumes:
+    - Name: "resumes_insert_policy"
+    - Allowed operation: INSERT
+    - Target roles: anon, authenticated (select both)
+    - Policy definition: true
+    
+    POLICY 2 - Allow anyone to view resumes:
+    - Name: "resumes_select_policy"
+    - Allowed operation: SELECT
+    - Target roles: anon, authenticated (select both)
+    - Policy definition: true
+    
+    POLICY 3 - Allow anyone to update resumes:
+    - Name: "resumes_update_policy"
+    - Allowed operation: UPDATE
+    - Target roles: anon, authenticated (select both)
+    - Policy definition: true
+    
     IMPORTANT NOTES FOR HACKATHON:
-    - This setup allows ANYONE to upload and view files (no authentication required)
+    - This setup allows ANYONE to access files and data (no authentication required)
     - This is NOT recommended for production but is fine for a hackathon
     - Make sure the bucket is set to PRIVATE since we're using policies to control access
     - No need to add path prefixes - upload directly to root of bucket
