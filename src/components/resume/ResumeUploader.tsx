@@ -64,9 +64,26 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
 
   // Validate and add files to state
   const addFiles = (newFiles: File[]) => {
+    console.log('Adding files:', newFiles);
+    
     const validFiles = newFiles.filter(file => {
+      // Check if file has all required properties
+      if (!file || !file.name || typeof file.name !== 'string') {
+        console.warn('Invalid file object detected:', file);
+        return false;
+      }
+      
       const isPDF = file.type === 'application/pdf';
       const isUnderSizeLimit = file.size <= 10 * 1024 * 1024; // 10MB limit
+      
+      if (!isPDF) {
+        console.warn('Non-PDF file rejected:', file.name);
+      }
+      
+      if (!isUnderSizeLimit) {
+        console.warn('File too large rejected:', file.name, file.size);
+      }
+      
       return isPDF && isUnderSizeLimit;
     });
 
@@ -76,12 +93,15 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
       alert(`${invalidFiles.length} file(s) were rejected. Only PDF files under 10MB are allowed.`);
     }
 
-    const filesWithPreview = validFiles.map(file => ({
-      ...file,
-      id: uuidv4(),
-      status: 'pending' as const,
-      uploadProgress: 0
-    }));
+    const filesWithPreview = validFiles.map(file => {
+      console.log('Creating preview for file:', file.name);
+      return {
+        ...file,
+        id: uuidv4(),
+        status: 'pending' as const,
+        uploadProgress: 0
+      };
+    });
 
     setFiles(prev => [...prev, ...filesWithPreview]);
   };
@@ -137,7 +157,11 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
           continue; // Skip this file and proceed with the next one
         }
         
-        const filePath = `${resumeId}/${file.name}`;
+        // Create a safe filename without special characters that might cause issues
+        const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const filePath = `${resumeId}/${safeFileName}`;
+        
+        console.log(`Processing file: ${safeFileName}, size: ${file.size}, type: ${file.type}`);
         
         // Update current file progress
         setFiles(prev => 
@@ -152,6 +176,7 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
         let contentText = '';
         try {
           contentText = await extractTextFromPdf(file);
+          console.log(`Extracted ${contentText.length} characters of text from PDF`);
           
           // Update file progress after extraction
           setFiles(prev => 
@@ -163,90 +188,125 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
           );
         } catch (error) {
           console.error('Error extracting text from PDF:', error);
+          // Continue with upload even if text extraction fails
+          contentText = 'Failed to extract text from PDF';
         }
 
         // 1. Upload file to Storage
         console.log('Uploading file to path:', `private/${filePath}`);
-        const { data: storageData, error: storageError } = await supabase.storage
-          .from('resumes')
-          .upload(`private/${filePath}`, file, {
-            cacheControl: '3600',
-            upsert: false
-          });
+        try {
+          const { data: storageData, error: storageError } = await supabase.storage
+            .from('resumes')
+            .upload(`private/${filePath}`, file, {
+              cacheControl: '3600',
+              upsert: false
+            });
 
-        if (storageError) {
-          console.error('Storage upload error details:', {
-            message: storageError.message,
-            details: storageError,
-            path: `private/${filePath}`,
-            bucket: 'resumes',
-            fileInfo: {
-              name: file.name,
-              size: file.size,
-              type: file.type
+          if (storageError) {
+            console.error('Storage upload error details:', {
+              message: storageError.message,
+              details: storageError,
+              path: `private/${filePath}`,
+              bucket: 'resumes',
+              fileInfo: {
+                name: file.name,
+                size: file.size,
+                type: file.type
+              }
+            });
+            throw new Error(`Storage error: ${storageError.message}`);
+          }
+
+          console.log('File uploaded successfully to storage', storageData);
+          
+          // Update file progress
+          setFiles(prev => 
+            prev.map(f => 
+              f.id === file.id 
+                ? { ...f, uploadProgress: 50 } 
+                : f
+            )
+          );
+
+          // Get the public URL
+          const { data: publicUrlData } = supabase.storage
+            .from('resumes')
+            .getPublicUrl(`private/${filePath}`);
+          
+          const fileUrl = publicUrlData.publicUrl;
+          console.log('Generated public URL for file:', fileUrl);
+
+          // 2. Create entry in resumes table
+          try {
+            const { data: resumeData, error: resumeError } = await supabase
+              .from('resumes')
+              .insert([
+                {
+                  id: resumeId,
+                  file_url: fileUrl,
+                  file_name: file.name,
+                  file_size: file.size,
+                  content_text: contentText,
+                  job_posting_id: jobPostingId
+                }
+              ])
+              .select();
+
+            if (resumeError) {
+              console.error('Database insertion error:', resumeError);
+              throw new Error(`Database error: ${resumeError.message}`);
             }
-          });
-          throw new Error(`Storage error: ${storageError.message}`);
+
+            console.log('Resume entry created in database:', resumeData);
+            
+            // 3. Update file status to success
+            setFiles(prev => 
+              prev.map(f => 
+                f.id === file.id 
+                  ? { ...f, status: 'success', uploadProgress: 100 } 
+                  : f
+              )
+            );
+
+            // Add to list of successfully uploaded resume IDs
+            uploadedResumeIds.push(resumeId);
+          } catch (dbError) {
+            console.error('Error creating database entry:', dbError);
+            setFiles(prev => 
+              prev.map(f => 
+                f.id === file.id 
+                  ? { ...f, status: 'error', error: dbError instanceof Error ? dbError.message : 'Database error' } 
+                  : f
+              )
+            );
+          }
+        } catch (uploadError) {
+          console.error('Error uploading file to storage:', uploadError);
+          setFiles(prev => 
+            prev.map(f => 
+              f.id === file.id 
+                ? { ...f, status: 'error', error: uploadError instanceof Error ? uploadError.message : 'Upload error' } 
+                : f
+            )
+          );
         }
-
-        // Update file progress
-        setFiles(prev => 
-          prev.map(f => 
-            f.id === file.id 
-              ? { ...f, uploadProgress: 50 } 
-              : f
-          )
-        );
-
-        // Get the public URL
-        const { data: publicUrlData } = supabase.storage
-          .from('resumes')
-          .getPublicUrl(`private/${filePath}`);
-        
-        const fileUrl = publicUrlData.publicUrl;
-
-        // 2. Create entry in resumes table
-        const { data: resumeData, error: resumeError } = await supabase
-          .from('resumes')
-          .insert([
-            {
-              id: resumeId,
-              file_url: fileUrl,
-              file_name: file.name,
-              file_size: file.size,
-              content_text: contentText,
-              job_posting_id: jobPostingId
-            }
-          ])
-          .select();
-
-        if (resumeError) {
-          throw new Error(`Database error: ${resumeError.message}`);
-        }
-
-        // 3. Update file status to success
-        setFiles(prev => 
-          prev.map(f => 
-            f.id === file.id 
-              ? { ...f, status: 'success', uploadProgress: 100 } 
-              : f
-          )
-        );
-
-        // Add to list of successfully uploaded resume IDs
-        uploadedResumeIds.push(resumeId);
       }
 
       // 4. Call the onUploadComplete callback with the IDs of uploaded resumes
-      onUploadComplete(uploadedResumeIds);
-      
-      // 5. Clear files after short delay
-      setTimeout(() => {
-        clearFiles();
-      }, 2000);
+      if (uploadedResumeIds.length > 0) {
+        console.log(`Successfully uploaded ${uploadedResumeIds.length} resumes`, uploadedResumeIds);
+        onUploadComplete(uploadedResumeIds);
+        
+        // 5. Clear files after short delay
+        setTimeout(() => {
+          clearFiles();
+        }, 2000);
+      } else {
+        console.warn('No files were successfully uploaded');
+      }
 
     } catch (error: any) {
-      console.error('Error uploading files:', error);
+      console.error('Error in upload process:', error);
       
       // Update file status for any files that failed
       setFiles(prev => 
