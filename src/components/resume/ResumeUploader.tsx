@@ -283,27 +283,36 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
 
           // 2. Create entry in resumes table
           try {
-            const { data: resumeData, error: resumeError } = await supabase
-              .from('resumes')
-              .insert([
-                {
-                  id: resumeId,
-                  file_url: fileUrl,
-                  file_name: fileName,
-                  file_size: originalFile.size,
-                  content_text: contentText,
-                  job_posting_id: jobPostingId
-                }
-              ])
-              .select();
-
-            if (resumeError) {
-              console.error('Database insertion error:', resumeError);
-              throw new Error(`Database error: ${resumeError.message}`);
-            }
-
-            console.log('Resume entry created in database:', resumeData);
+            // For the hackathon, generate a random candidate ID if needed
+            const candidateId = uuidv4(); // Generate random ID for hackathon purposes
             
+            // Create resume data object with required fields
+            const resumeData = {
+              id: resumeId,
+              file_url: fileUrl,
+              file_name: fileName,
+              file_size: originalFile.size,
+              content_text: contentText,
+              candidate_id: candidateId // Use candidate_id instead of job_posting_id to match table schema
+            };
+            
+            console.log('Inserting resume record with data:', {
+              ...resumeData,
+              content_text_length: contentText.length // Just show length for logging
+            });
+            
+            const { data, error } = await supabase
+              .from('resumes')
+              .insert([resumeData])
+              .select();
+              
+            if (error) {
+              console.error('Database insertion error:', error);
+              throw new Error(`Database error: ${error.message}`);
+            }
+            
+            console.log('Resume entry created in database:', data);
+
             // 3. Update file status to success
             setFiles(prev => 
               prev.map(f => 
