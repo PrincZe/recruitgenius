@@ -96,37 +96,8 @@ export const analyzeResume = async (resumeId: string, jobPostingId: string): Pro
         candidateEmail = analysis.candidateEmail;
       }
       
-      // Update the resume record with extracted name and email if they exist
-      if (candidateName || candidateEmail) {
-        const updateData: Record<string, any> = {};
-        
-        if (candidateName) {
-          updateData.candidate_name = candidateName;
-        }
-        
-        if (candidateEmail) {
-          updateData.candidate_email = candidateEmail;
-        }
-        
-        // Only update if we have data to update
-        if (Object.keys(updateData).length > 0) {
-          try {
-            console.log('Updating resume with extracted name/email:', updateData);
-            const { error: updateError } = await supabase
-              .from('resumes')
-              .update(updateData)
-              .eq('id', resumeId);
-            
-            if (updateError) {
-              console.error('Error updating resume with extracted name/email:', updateError);
-            } else {
-              console.log('Successfully updated resume with extracted name and email');
-            }
-          } catch (error) {
-            console.error('Error in Supabase update operation:', error);
-          }
-        }
-      }
+      // We don't update the resume record with name/email anymore as those columns don't exist
+      // Instead, we'll store this information in the analysis JSON
       
       // Normalize the overallScore to be between 0-100%
       const normalizedScore = analysis.overallScore || 0;
@@ -149,6 +120,13 @@ export const analyzeResume = async (resumeId: string, jobPostingId: string): Pro
         // Default fallback
         return Math.min(Math.max(score, 0), 10);
       };
+      
+      // Store the candidate info in the analysis JSON
+      if (!analysis.candidateInfo) {
+        analysis.candidateInfo = {};
+      }
+      analysis.candidateInfo.name = candidateName;
+      analysis.candidateInfo.email = candidateEmail;
       
       // Create the evaluation object
       const evaluationData: Omit<ResumeEvaluation, 'id'> = {
