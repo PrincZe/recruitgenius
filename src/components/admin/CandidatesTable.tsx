@@ -14,6 +14,8 @@ interface Candidate {
   resume?: {
     file_url: string;
     file_name: string;
+    candidate_name?: string;
+    candidate_email?: string;
   };
   overall_score: number;
   selected_for_interview: boolean;
@@ -171,12 +173,9 @@ export default function CandidatesTable({
                 Score
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Resume Analysis
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Skills Assessment
               </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">
                 AI Summary
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -214,17 +213,22 @@ export default function CandidatesTable({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      <div className="h-10 w-10 flex-shrink-0 bg-gray-200 rounded-full flex items-center justify-center">
-                        <span className="text-gray-500 font-medium">
-                          {candidate.candidate?.name?.charAt(0) || '?'}
+                      <div className="flex-shrink-0 h-10 w-10 flex items-center justify-center bg-gray-200 rounded-full">
+                        <span className="text-gray-600 font-medium">
+                          {(candidate.resume?.candidate_name ? 
+                            candidate.resume.candidate_name.charAt(0) : 
+                            candidate.candidate?.name ? 
+                              candidate.candidate.name.charAt(0) : 
+                              '?'
+                          ).toUpperCase()}
                         </span>
                       </div>
                       <div className="ml-4">
                         <div className="text-sm font-medium text-gray-900">
-                          {candidate.candidate?.name || 'Unknown Candidate'}
+                          {candidate.resume?.candidate_name || candidate.candidate?.name || 'Unknown Candidate'}
                         </div>
                         <div className="text-sm text-gray-500">
-                          {candidate.candidate?.email || 'No email'}
+                          {candidate.resume?.candidate_email || candidate.candidate?.email || 'No email'}
                         </div>
                       </div>
                     </div>
@@ -236,15 +240,6 @@ export default function CandidatesTable({
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getScoreClass(candidate.overall_score * 20)}`}>
                       {(candidate.overall_score * 20).toFixed(0)}%
                     </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {candidate.analysis_json?.sentimentType ? (
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getSentimentClass(candidate.analysis_json?.sentimentType)}`}>
-                        {candidate.analysis_json?.sentimentType}
-                      </span>
-                    ) : (
-                      <span className="text-sm text-gray-500">Not analyzed</span>
-                    )}
                   </td>
                   <td className="px-6 py-4">
                     <div className="text-sm text-gray-900">
@@ -280,8 +275,8 @@ export default function CandidatesTable({
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="text-sm text-gray-900 max-w-xs truncate">
-                      {candidate.analysis_json?.summary || 'No summary available'}
+                    <p className="text-sm text-gray-900 max-w-md overflow-hidden">
+                      {candidate.analysis_json?.analysis || candidate.analysis_json?.summary || 'No summary available'}
                     </p>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

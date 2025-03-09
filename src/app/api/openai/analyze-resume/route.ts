@@ -26,74 +26,44 @@ export async function POST(req: NextRequest) {
 
     console.log(`Analyzing resume against job description (first 50 chars): "${jobDescription.substring(0, 50)}..."`);
 
+    // Construct the prompt for OpenAI
     const prompt = `
-You are an expert talent evaluator with years of experience in technical recruiting for engineering managers. 
-Your task is to analyze a candidate's resume against a job description for an engineering manager role, and provide a detailed evaluation.
+    You are an AI assistant specialized in evaluating resumes against job descriptions.
 
-The evaluation should assess the candidate against 5 dimensions of the engineering manager role:
-1. Ownership - How well they take responsibility for team success and deliverables
-2. Organisation Impact - How they influence across the organization and hire/develop others
-3. Independence & Score - Their level of leadership and autonomous decision making
-4. Strategic Alignment - Their ability to align with and influence company strategy
-5. Skills - Their technical and managerial skill set
+    JOB DESCRIPTION:
+    ${jobDescription}
 
-For each dimension, you'll assign:
-- A score from 1.0 to 5.0 (with one decimal precision)
-- A level from 4 to 8 that corresponds to their career progression
-  * Level 4: Engineering Manager
-  * Level 5: Senior Engineering Manager
-  * Level 6: Engineering Director
-  * Level 7: Senior Engineering Director
-  * Level 8: Architecture & Capability Executive (ACE)
+    RESUME TEXT:
+    ${resumeText}
 
-Job Description:
-"""
-${jobDescription}
-"""
+    Please analyze this resume against the job description and provide:
 
-Candidate Resume:
-"""
-${resumeText}
-"""
+    1. FIRST, extract the candidate's full name and email address from the resume.
+    2. Then evaluate the candidate on the following dimensions (score 1-10 and indicate level 4-8):
+      - Ownership: ${dimensions[0]}
+      - Organisation Impact: ${dimensions[1]}
+      - Independence & Score: ${dimensions[2]}
+      - Strategic Alignment: ${dimensions[3]}
+      - Skills: ${dimensions[4]}
+    3. Provide an overall score (1-100).
+    4. Write a brief analysis of the candidate's fit for the role.
 
-Return ONLY valid JSON in the following format:
-{
-  "overallScore": <number 1.0-5.0>,
-  "dimensionScores": {
-    "Ownership": {
-      "score": <number 1.0-5.0>,
-      "level": <integer 4-8>,
-      "description": "<explanation of assessment>"
-    },
-    "Organisation Impact": {
-      "score": <number 1.0-5.0>,
-      "level": <integer 4-8>,
-      "description": "<explanation of assessment>"
-    },
-    "Independence & Score": {
-      "score": <number 1.0-5.0>,
-      "level": <integer 4-8>,
-      "description": "<explanation of assessment>"
-    },
-    "Strategic Alignment": {
-      "score": <number 1.0-5.0>,
-      "level": <integer 4-8>,
-      "description": "<explanation of assessment>"
-    },
-    "Skills": {
-      "score": <number 1.0-5.0>,
-      "level": <integer 4-8>,
-      "description": "<explanation of assessment>"
+    Format your response as a valid JSON object with the following structure:
+    {
+      "candidateName": "Full Name",
+      "candidateEmail": "email@example.com",
+      "overallScore": 85,
+      "dimensions": {
+        "Ownership": { "score": 8, "level": 6, "justification": "..." },
+        "OrganisationImpact": { "score": 7, "level": 5, "justification": "..." },
+        "Independence": { "score": 9, "level": 7, "justification": "..." },
+        "StrategicAlignment": { "score": 8, "level": 6, "justification": "..." },
+        "Skills": { "score": 8, "level": 6, "justification": "..." }
+      },
+      "analysis": "Concise analysis of candidate's fit for the role...",
+      "recommendedSkills": ["Skill 1", "Skill 2", "Skill 3"]
     }
-  },
-  "topStrengths": [<string>, <string>, <string>],
-  "developmentAreas": [<string>, <string>],
-  "skillsMatched": [<string>, <string>, <string>, ...],
-  "summary": "<brief evaluation summary>"
-}
-
-Be objective, thorough, and focus on evidence from the resume. Do not make assumptions not supported by the resume.
-`;
+    `;
 
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
