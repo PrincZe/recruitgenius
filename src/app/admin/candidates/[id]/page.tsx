@@ -21,17 +21,53 @@ export default function CandidateDetailPage({ params }: { params: { id: string }
   const evaluationId = params.id;
   
   const [loading, setLoading] = useState(true);
-  const [evaluation, setEvaluation] = useState<any>(null);
-  const [jobPosting, setJobPosting] = useState<any>(null);
-  const [candidate, setCandidate] = useState<any>(null);
+  const [evaluation, setEvaluation] = useState<any | null>(null);
+  const [jobPosting, setJobPosting] = useState<any | null>(null);
+  const [candidate, setCandidate] = useState<any | null>(null);
+  const [candidateName, setCandidateName] = useState<string>('');
+  const [candidateEmail, setCandidateEmail] = useState<string>('');
   const [generatingLink, setGeneratingLink] = useState(false);
   const [interviewLink, setInterviewLink] = useState<string | null>(null);
 
   useEffect(() => {
-    if (evaluationId) {
-      fetchEvaluationDetails();
-    }
+    fetchEvaluationDetails();
   }, [evaluationId]);
+
+  // Update candidate information when data changes
+  useEffect(() => {
+    if (evaluation) {
+      // Try to get name from different sources in priority order
+      let name = '';
+      let email = '';
+      
+      // Priority 1: Use resume.candidate_name if available
+      if (evaluation.resume?.candidate_name) {
+        name = evaluation.resume.candidate_name;
+      } 
+      // Priority 2: Use candidate.name if available
+      else if (candidate?.name) {
+        name = candidate.name;
+      } 
+      // Priority 3: Generate a random name as fallback
+      else {
+        name = 'Candidate ' + evaluation.id.substring(0, 4);
+      }
+      
+      // Same priority for email
+      if (evaluation.resume?.candidate_email) {
+        email = evaluation.resume.candidate_email;
+      } 
+      else if (candidate?.email) {
+        email = candidate.email;
+      } 
+      else {
+        email = name.toLowerCase().replace(' ', '.') + '@example.com';
+      }
+      
+      setCandidateName(name);
+      setCandidateEmail(email);
+    }
+  }, [evaluation, candidate]);
 
   const fetchEvaluationDetails = async () => {
     try {
@@ -172,25 +208,23 @@ export default function CandidateDetailPage({ params }: { params: { id: string }
     <div className="px-4 py-8">
       <div className="mb-6 flex justify-between items-center">
         <div className="flex items-center">
-          <Link href={`/admin/candidates?job=${evaluation.job_posting_id}`} className="mr-4 p-2 hover:bg-gray-100 rounded-full">
+          <Link href={`/admin/candidates?job=${evaluation?.job_posting_id}`} className="mr-4 p-2 hover:bg-gray-100 rounded-full">
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <h1 className="text-2xl font-bold">Candidate Details</h1>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1">
-          {/* Candidate Card */}
-          <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-            <div className="flex items-center">
-              <div className="h-16 w-16 rounded-full bg-gray-200 flex items-center justify-center">
-                <User className="h-8 w-8 text-gray-500" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="md:col-span-1 space-y-6">
+          {/* Candidate Info Card */}
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <div className="flex flex-col items-center mb-6">
+              <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center mb-4">
+                <User className="h-10 w-10 text-gray-500" />
               </div>
-              <div className="ml-4">
-                <h2 className="text-xl font-semibold">{candidate?.name || 'Unknown Candidate'}</h2>
-                <p className="text-gray-600">{candidate?.email || 'No email'}</p>
-              </div>
+              <h2 className="text-xl font-semibold">{candidateName}</h2>
+              <p className="text-gray-500">{candidateEmail}</p>
             </div>
 
             {evaluation.selected_for_interview ? (
@@ -305,143 +339,127 @@ export default function CandidateDetailPage({ params }: { params: { id: string }
           )}
         </div>
 
-        <div className="lg:col-span-2">
+        <div className="md:col-span-2">
           {/* Overall Score Card */}
           <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-            <h2 className="text-lg font-semibold mb-4 flex items-center">
+            <div className="flex items-center mb-4">
               <BarChart className="h-5 w-5 text-blue-500 mr-2" />
-              Overall Score
-            </h2>
-            <div className="flex items-center">
+              <h2 className="text-lg font-semibold">Overall Score</h2>
+            </div>
+            <div className="flex items-end">
+              <div className="text-4xl font-bold text-green-500">
+                {evaluation ? Math.round(evaluation.overall_score) : 0}
+              </div>
+              <div className="text-gray-500 ml-2 mb-1">/ 100</div>
+            </div>
+            <div className="mt-2 w-full bg-gray-200 rounded-full h-2.5">
               <div 
-                className={`text-4xl font-bold ${
-                  evaluation.overall_score >= 4 
-                    ? 'text-green-600' 
-                    : evaluation.overall_score >= 3 
-                    ? 'text-blue-600' 
-                    : evaluation.overall_score >= 2 
-                    ? 'text-yellow-600' 
-                    : 'text-red-600'
-                }`}
-              >
-                {evaluation.overall_score.toFixed(1)}
-              </div>
-              <div className="ml-3 text-gray-500">/ 5.0</div>
-              <div className="ml-auto">
-                <div className="bg-gray-200 w-40 h-3 rounded-full overflow-hidden">
-                  <div 
-                    className={`h-full ${
-                      evaluation.overall_score >= 4 
-                        ? 'bg-green-500' 
-                        : evaluation.overall_score >= 3 
-                        ? 'bg-blue-500' 
-                        : evaluation.overall_score >= 2 
-                        ? 'bg-yellow-500' 
-                        : 'bg-red-500'
-                    }`}
-                    style={{ width: `${(evaluation.overall_score / 5) * 100}%` }}
-                  ></div>
-                </div>
-              </div>
+                className="bg-green-500 h-2.5 rounded-full" 
+                style={{ width: `${evaluation ? Math.min(Math.max(evaluation.overall_score, 0), 100) : 0}%` }}
+              ></div>
             </div>
           </div>
 
           {/* Dimension Scores Card */}
           <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-            <h2 className="text-lg font-semibold mb-4 flex items-center">
+            <div className="flex items-center mb-4">
               <Star className="h-5 w-5 text-blue-500 mr-2" />
-              Dimension Scores
-            </h2>
+              <h2 className="text-lg font-semibold">Dimension Scores</h2>
+            </div>
             <div className="space-y-6">
-              <div>
-                <div className="flex justify-between mb-1">
-                  <span className="text-sm font-medium text-gray-700">Ownership</span>
-                  <span className="text-sm font-medium text-gray-700">
-                    L{evaluation.ownership_level} ({evaluation.ownership_score.toFixed(1)})
-                  </span>
-                </div>
-                <div className="bg-gray-200 h-2.5 rounded-full">
-                  <div 
-                    className="bg-blue-600 h-2.5 rounded-full" 
-                    style={{ width: `${(evaluation.ownership_score / 5) * 100}%` }}
-                  ></div>
-                </div>
-                <div className="mt-1 text-xs text-gray-500">
-                  {getDimensionDescription('Ownership', evaluation.ownership_level)}
-                </div>
-              </div>
+              {evaluation && (
+                <>
+                  <div>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-medium text-gray-700">Ownership</span>
+                      <span className="text-sm font-medium text-gray-700">
+                        L{evaluation.ownership_level} ({evaluation.ownership_score.toFixed(1)}/10)
+                      </span>
+                    </div>
+                    <div className="bg-gray-200 h-2.5 rounded-full">
+                      <div 
+                        className="bg-blue-600 h-2.5 rounded-full" 
+                        style={{ width: `${(evaluation.ownership_score / 10) * 100}%` }}
+                      ></div>
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      {getDimensionDescription('Ownership', evaluation.ownership_level)}
+                    </div>
+                  </div>
 
-              <div>
-                <div className="flex justify-between mb-1">
-                  <span className="text-sm font-medium text-gray-700">Organization Impact</span>
-                  <span className="text-sm font-medium text-gray-700">
-                    L{evaluation.organization_impact_level} ({evaluation.organization_impact_score.toFixed(1)})
-                  </span>
-                </div>
-                <div className="bg-gray-200 h-2.5 rounded-full">
-                  <div 
-                    className="bg-purple-600 h-2.5 rounded-full" 
-                    style={{ width: `${(evaluation.organization_impact_score / 5) * 100}%` }}
-                  ></div>
-                </div>
-                <div className="mt-1 text-xs text-gray-500">
-                  {getDimensionDescription('Organisation Impact', evaluation.organization_impact_level)}
-                </div>
-              </div>
+                  <div>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-medium text-gray-700">Organization Impact</span>
+                      <span className="text-sm font-medium text-gray-700">
+                        L{evaluation.organization_impact_level} ({evaluation.organization_impact_score.toFixed(1)}/10)
+                      </span>
+                    </div>
+                    <div className="bg-gray-200 h-2.5 rounded-full">
+                      <div 
+                        className="bg-purple-600 h-2.5 rounded-full" 
+                        style={{ width: `${(evaluation.organization_impact_score / 10) * 100}%` }}
+                      ></div>
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      {getDimensionDescription('Organisation Impact', evaluation.organization_impact_level)}
+                    </div>
+                  </div>
 
-              <div>
-                <div className="flex justify-between mb-1">
-                  <span className="text-sm font-medium text-gray-700">Independence</span>
-                  <span className="text-sm font-medium text-gray-700">
-                    L{evaluation.independence_level} ({evaluation.independence_score.toFixed(1)})
-                  </span>
-                </div>
-                <div className="bg-gray-200 h-2.5 rounded-full">
-                  <div 
-                    className="bg-green-600 h-2.5 rounded-full" 
-                    style={{ width: `${(evaluation.independence_score / 5) * 100}%` }}
-                  ></div>
-                </div>
-                <div className="mt-1 text-xs text-gray-500">
-                  {getDimensionDescription('Independence & Score', evaluation.independence_level)}
-                </div>
-              </div>
+                  <div>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-medium text-gray-700">Independence</span>
+                      <span className="text-sm font-medium text-gray-700">
+                        L{evaluation.independence_level} ({evaluation.independence_score.toFixed(1)}/10)
+                      </span>
+                    </div>
+                    <div className="bg-gray-200 h-2.5 rounded-full">
+                      <div 
+                        className="bg-green-600 h-2.5 rounded-full" 
+                        style={{ width: `${(evaluation.independence_score / 10) * 100}%` }}
+                      ></div>
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      {getDimensionDescription('Independence & Score', evaluation.independence_level)}
+                    </div>
+                  </div>
 
-              <div>
-                <div className="flex justify-between mb-1">
-                  <span className="text-sm font-medium text-gray-700">Strategic Alignment</span>
-                  <span className="text-sm font-medium text-gray-700">
-                    L{evaluation.strategic_alignment_level} ({evaluation.strategic_alignment_score.toFixed(1)})
-                  </span>
-                </div>
-                <div className="bg-gray-200 h-2.5 rounded-full">
-                  <div 
-                    className="bg-amber-600 h-2.5 rounded-full" 
-                    style={{ width: `${(evaluation.strategic_alignment_score / 5) * 100}%` }}
-                  ></div>
-                </div>
-                <div className="mt-1 text-xs text-gray-500">
-                  {getDimensionDescription('Strategic Alignment', evaluation.strategic_alignment_level)}
-                </div>
-              </div>
+                  <div>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-medium text-gray-700">Strategic Alignment</span>
+                      <span className="text-sm font-medium text-gray-700">
+                        L{evaluation.strategic_alignment_level} ({evaluation.strategic_alignment_score.toFixed(1)}/10)
+                      </span>
+                    </div>
+                    <div className="bg-gray-200 h-2.5 rounded-full">
+                      <div 
+                        className="bg-amber-600 h-2.5 rounded-full" 
+                        style={{ width: `${(evaluation.strategic_alignment_score / 10) * 100}%` }}
+                      ></div>
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      {getDimensionDescription('Strategic Alignment', evaluation.strategic_alignment_level)}
+                    </div>
+                  </div>
 
-              <div>
-                <div className="flex justify-between mb-1">
-                  <span className="text-sm font-medium text-gray-700">Skills</span>
-                  <span className="text-sm font-medium text-gray-700">
-                    L{evaluation.skills_level} ({evaluation.skills_score.toFixed(1)})
-                  </span>
-                </div>
-                <div className="bg-gray-200 h-2.5 rounded-full">
-                  <div 
-                    className="bg-red-600 h-2.5 rounded-full" 
-                    style={{ width: `${(evaluation.skills_score / 5) * 100}%` }}
-                  ></div>
-                </div>
-                <div className="mt-1 text-xs text-gray-500">
-                  {getDimensionDescription('Skills', evaluation.skills_level)}
-                </div>
-              </div>
+                  <div>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-medium text-gray-700">Skills</span>
+                      <span className="text-sm font-medium text-gray-700">
+                        L{evaluation.skills_level} ({evaluation.skills_score.toFixed(1)}/10)
+                      </span>
+                    </div>
+                    <div className="bg-gray-200 h-2.5 rounded-full">
+                      <div 
+                        className="bg-red-600 h-2.5 rounded-full" 
+                        style={{ width: `${(evaluation.skills_score / 10) * 100}%` }}
+                      ></div>
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      {getDimensionDescription('Skills', evaluation.skills_level)}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -449,12 +467,14 @@ export default function CandidateDetailPage({ params }: { params: { id: string }
           <div className="bg-white p-6 rounded-lg shadow-md">
             <h2 className="text-lg font-semibold mb-4">Analysis Details</h2>
             
-            {evaluation.analysis_json ? (
+            {evaluation?.analysis_json ? (
               <div className="space-y-6">
                 {/* Summary */}
                 <div>
                   <h3 className="text-md font-medium text-gray-700 mb-2">Summary</h3>
-                  <p className="text-gray-600">{evaluation.analysis_json.summary}</p>
+                  <p className="text-gray-600">
+                    {evaluation.analysis_json.summary || evaluation.analysis_json.analysis || 'No summary available'}
+                  </p>
                 </div>
                 
                 {/* Strengths */}

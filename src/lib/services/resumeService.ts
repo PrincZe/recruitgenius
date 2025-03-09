@@ -133,17 +133,34 @@ export const analyzeResume = async (resumeId: string, jobPostingId: string): Pro
       const calculatedScore = typeof normalizedScore === 'number' ? 
                               Math.min(Math.max(normalizedScore, 0), 100) : 0;
       
+      // Normalize dimension scores to 0-10 scale
+      const normalizeScore = (score: number | undefined) => {
+        if (typeof score !== 'number' || isNaN(score)) return 0;
+        
+        // If score is already between 0-10, use it as is
+        if (score >= 0 && score <= 10) return score;
+        
+        // If score is between 0-5, multiply by 2 to get 0-10 scale
+        if (score >= 0 && score <= 5) return score * 2;
+        
+        // If score is between 0-100, divide by 10 to get 0-10 scale
+        if (score >= 0 && score <= 100) return score / 10;
+        
+        // Default fallback
+        return Math.min(Math.max(score, 0), 10);
+      };
+      
       // Create the evaluation object
       const evaluationData: Omit<ResumeEvaluation, 'id'> = {
         resumeId,
         jobPostingId,
         // Ensure score is between 0-100
         overallScore: calculatedScore,
-        ownershipScore: analysis.dimensions?.Ownership?.score || 0,
-        organizationImpactScore: analysis.dimensions?.OrganisationImpact?.score || 0,
-        independenceScore: analysis.dimensions?.Independence?.score || 0,
-        strategicAlignmentScore: analysis.dimensions?.StrategicAlignment?.score || 0,
-        skillsScore: analysis.dimensions?.Skills?.score || 0,
+        ownershipScore: normalizeScore(analysis.dimensions?.Ownership?.score || 0),
+        organizationImpactScore: normalizeScore(analysis.dimensions?.OrganisationImpact?.score || 0),
+        independenceScore: normalizeScore(analysis.dimensions?.Independence?.score || 0),
+        strategicAlignmentScore: normalizeScore(analysis.dimensions?.StrategicAlignment?.score || 0),
+        skillsScore: normalizeScore(analysis.dimensions?.Skills?.score || 0),
         ownershipLevel: analysis.dimensions?.Ownership?.level || 4,
         organizationImpactLevel: analysis.dimensions?.OrganisationImpact?.level || 4,
         independenceLevel: analysis.dimensions?.Independence?.level || 4,
