@@ -122,55 +122,88 @@ export default function ScreeningPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6">
-          <div className="bg-white p-6 rounded-lg shadow-md">
+          <div className="bg-white p-6 rounded-lg shadow-md mb-6">
             <h2 className="text-xl font-semibold mb-4">Select Job Posting</h2>
             
-            {jobPostings.length === 0 ? (
-              <div className="text-center py-8 bg-gray-50 rounded-md">
-                <FileText className="h-12 w-12 mx-auto text-gray-400 mb-2" />
-                <p className="text-gray-500">No job postings found.</p>
-                <p className="text-sm text-gray-400 mt-1">
-                  Job postings will appear here once added.
-                </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <label htmlFor="job-select" className="block text-sm font-medium text-gray-700 mb-2">
+                  Job Position
+                </label>
+                <select
+                  id="job-select"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  value={selectedJobId || ''}
+                  onChange={(e) => setSelectedJobId(e.target.value)}
+                >
+                  <option value="">-- Select a job posting --</option>
+                  {jobPostings.map((job) => (
+                    <option key={job.id} value={job.id}>
+                      {job.title} ({job.department || 'No department'})
+                    </option>
+                  ))}
+                </select>
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {jobPostings.map((job) => (
-                  <div 
-                    key={job.id}
-                    className={`p-4 border rounded-md cursor-pointer transition ${
-                      selectedJobId === job.id 
-                        ? 'border-blue-500 bg-blue-50' 
-                        : 'border-gray-200 hover:border-blue-300'
-                    }`}
-                    onClick={() => setSelectedJobId(job.id)}
-                  >
-                    <h3 className="font-medium">{job.title}</h3>
-                    <p className="text-sm text-gray-500">{job.department || 'No department'}</p>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {job.skills && job.skills.slice(0, 3).map((skill: string, i: number) => (
-                        <span key={i} className="text-xs bg-gray-200 px-2 py-1 rounded">
-                          {skill}
-                        </span>
-                      ))}
-                      {job.skills && job.skills.length > 3 && (
-                        <span className="text-xs bg-gray-200 px-2 py-1 rounded">
-                          +{job.skills.length - 3} more
-                        </span>
-                      )}
-                    </div>
-                    {selectedJobId === job.id && resumeEvaluations.length > 0 && (
-                      <div className="mt-2 text-sm text-blue-600">
-                        {resumeEvaluations.length} resume(s) analyzed
+              
+              <div className="md:col-span-2">
+                {selectedJobId ? (
+                  (() => {
+                    const job = jobPostings.find(j => j.id === selectedJobId);
+                    if (!job) return null;
+                    
+                    return (
+                      <div>
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">{job.title}</h3>
+                        <p className="text-sm text-gray-600 mb-3">{job.department || 'No department'}</p>
+                        
+                        <div className="mb-4 flex flex-wrap gap-1">
+                          {job.skills && job.skills.map((skill: string, i: number) => (
+                            <span key={i} className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
+                        
+                        <div className="mb-4">
+                          <h4 className="text-sm font-medium text-gray-700 mb-1">Description:</h4>
+                          <p className="text-sm text-gray-600">{job.description}</p>
+                        </div>
+                        
+                        {job.requirements && job.requirements.length > 0 && (
+                          <div className="mb-4">
+                            <h4 className="text-sm font-medium text-gray-700 mb-1">Requirements:</h4>
+                            <ul className="list-disc list-inside text-sm text-gray-600">
+                              {job.requirements.map((req: string, i: number) => (
+                                <li key={i}>{req}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        
+                        {job.file_url && (
+                          <a
+                            href={job.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+                          >
+                            <FileText className="h-4 w-4 mr-2" />
+                            View Full Job Description
+                          </a>
+                        )}
                       </div>
-                    )}
+                    );
+                  })()
+                ) : (
+                  <div className="flex items-center justify-center h-40 bg-gray-50 rounded-md">
+                    <p className="text-gray-500">Select a job posting to view details</p>
                   </div>
-                ))}
+                )}
               </div>
-            )}
+            </div>
           </div>
 
-          {selectedJobId && (
+          {selectedJobId ? (
             <div className="bg-white p-6 rounded-lg shadow-md">
               <h2 className="text-xl font-semibold mb-4">Upload Resumes</h2>
               
@@ -200,6 +233,11 @@ export default function ScreeningPage() {
                   </button>
                 </div>
               )}
+            </div>
+          ) : (
+            <div className="bg-white p-6 rounded-lg shadow-md text-center">
+              <h2 className="text-xl font-semibold mb-4">Upload Resumes</h2>
+              <p className="text-gray-500 mb-4">Please select a job posting first</p>
             </div>
           )}
 
