@@ -148,6 +148,30 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
       return;
     }
 
+    // Check authentication first
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError) {
+      console.error('Authentication error:', sessionError);
+      alert('Authentication error: Please make sure you are logged in.');
+      return;
+    }
+    
+    const session = sessionData?.session;
+    
+    if (!session) {
+      console.error('No active session found. Please log in.');
+      alert('Not authenticated: Please log in before uploading files.');
+      return;
+    }
+    
+    console.log('User is authenticated:', {
+      userId: session.user.id,
+      email: session.user.email,
+      role: session.user.role,
+      authProvider: session.user.app_metadata?.provider || 'unknown'
+    });
+
     setUploading(true);
     const uploadedResumeIds: string[] = [];
     
@@ -239,12 +263,12 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
         }
 
         // 1. Upload file to Storage
-        console.log('Uploading file to path:', `private/${filePath}`);
+        console.log('Uploading file to path:', `${filePath}`);
         try {
           // Use the original file object directly
           const { data: storageData, error: storageError } = await supabase.storage
             .from('resumes')
-            .upload(`private/${filePath}`, originalFile, {
+            .upload(`${filePath}`, originalFile, {
               cacheControl: '3600',
               upsert: false
             });
@@ -253,7 +277,7 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
             console.error('Storage upload error details:', {
               message: storageError.message,
               details: storageError,
-              path: `private/${filePath}`,
+              path: `${filePath}`,
               bucket: 'resumes'
             });
             throw new Error(`Storage error: ${storageError.message}`);
@@ -273,7 +297,7 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
           // Get the public URL
           const { data: publicUrlData } = supabase.storage
             .from('resumes')
-            .getPublicUrl(`private/${filePath}`);
+            .getPublicUrl(`${filePath}`);
           
           const fileUrl = publicUrlData.publicUrl;
           console.log('Generated public URL for file:', fileUrl);

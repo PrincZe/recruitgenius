@@ -12,7 +12,8 @@ export const createResumesBucketPolicy = async () => {
     
     1. Go to Storage > Buckets > resumes
     2. Click on "Policies" tab
-    3. Create two new policies:
+    3. Delete any existing policies for the resumes bucket to start fresh
+    4. Create two new policies:
     
     POLICY 1 - For viewing/downloading resumes:
     - Name: "Allow authenticated users to view resumes" 
@@ -26,6 +27,11 @@ export const createResumesBucketPolicy = async () => {
     - Policy definition: auth.role() = 'authenticated'  
     - Target roles: authenticated
     
+    IMPORTANT:
+    - Make sure your user is properly authenticated when uploading
+    - Make sure the bucket is set to PRIVATE (not public) since we're using RLS
+    - No need to add 'private/' to any paths - upload directly to root of bucket
+    
     After creating these policies, your resume upload should work correctly.
   `);
   
@@ -38,6 +44,14 @@ export const createResumesBucketPolicy = async () => {
  */
 export const ensureResumesBucketPolicy = async () => {
   try {
+    // Check authentication status
+    const { data: session } = await supabase.auth.getSession();
+    if (!session.session) {
+      console.warn("User is not authenticated! Policies will only work for authenticated users.");
+    } else {
+      console.log("User is authenticated as:", session.session.user.email);
+    }
+    
     // Try to create the bucket first if it doesn't exist
     const { error: bucketError } = await supabase.storage.createBucket('resumes', {
       public: false  // Make private since we'll use policies to control access
