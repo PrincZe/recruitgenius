@@ -69,10 +69,12 @@ export default function CandidatesTable({
   };
   
   const getScoreClass = (score: number) => {
-    if (score >= 90) return 'bg-green-100 text-green-800';
-    if (score >= 80) return 'bg-blue-100 text-blue-800';
-    if (score >= 70) return 'bg-teal-100 text-teal-800';
-    if (score >= 60) return 'bg-yellow-100 text-yellow-800';
+    const normalizedScore = typeof score === 'number' && !isNaN(score) ? 
+      Math.min(Math.max(score, 0), 100) : 0;
+      
+    if (normalizedScore >= 80) return 'bg-green-100 text-green-800';
+    if (normalizedScore >= 60) return 'bg-blue-100 text-blue-800';
+    if (normalizedScore >= 40) return 'bg-yellow-100 text-yellow-800';
     return 'bg-red-100 text-red-800';
   };
 
@@ -237,13 +239,15 @@ export default function CandidatesTable({
                     {formatDate(candidate.interview_date || candidate.created_at)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getScoreClass(candidate.overall_score * 20)}`}>
-                      {(candidate.overall_score * 20).toFixed(0)}%
-                    </span>
+                    <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getScoreClass(candidate.overall_score)}`}>
+                      {typeof candidate.overall_score === 'number' && !isNaN(candidate.overall_score) ? 
+                        `${Math.min(Math.max(Math.round(candidate.overall_score), 0), 100)}%` : 
+                        'N/A'}
+                    </div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="text-sm text-gray-900">
-                      {candidate.analysis_json?.skillsMatched ? (
+                      {candidate.analysis_json?.skillsMatched?.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {candidate.analysis_json.skillsMatched.slice(0, 3).map((skill: string, idx: number) => (
                             <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
@@ -256,7 +260,20 @@ export default function CandidatesTable({
                             </span>
                           )}
                         </div>
-                      ) : candidate.keywords ? (
+                      ) : candidate.analysis_json?.recommendedSkills?.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {candidate.analysis_json.recommendedSkills.slice(0, 3).map((skill: string, idx: number) => (
+                            <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                              {skill}
+                            </span>
+                          ))}
+                          {candidate.analysis_json.recommendedSkills.length > 3 && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                              +{candidate.analysis_json.recommendedSkills.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      ) : candidate.keywords && candidate.keywords.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {candidate.keywords.slice(0, 3).map((keyword, idx) => (
                             <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
@@ -275,8 +292,10 @@ export default function CandidatesTable({
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="text-sm text-gray-900 max-w-md overflow-hidden">
-                      {candidate.analysis_json?.analysis || candidate.analysis_json?.summary || 'No summary available'}
+                    <p className="text-sm text-gray-900 max-w-xs truncate">
+                      {candidate.analysis_json?.analysis || 
+                       candidate.analysis_json?.summary || 
+                       'No summary available'}
                     </p>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

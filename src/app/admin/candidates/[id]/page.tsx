@@ -461,9 +461,13 @@ export default function CandidateDetailPage({ params }: { params: { id: string }
                 <div>
                   <h3 className="text-md font-medium text-gray-700 mb-2">Strengths</h3>
                   <ul className="list-disc pl-5 space-y-1">
-                    {evaluation.analysis_json.topStrengths.map((strength: string, i: number) => (
-                      <li key={i} className="text-gray-600">{strength}</li>
-                    ))}
+                    {evaluation.analysis_json.topStrengths && evaluation.analysis_json.topStrengths.length > 0 ? (
+                      evaluation.analysis_json.topStrengths.map((strength: string, i: number) => (
+                        <li key={i} className="text-gray-600">{strength}</li>
+                      ))
+                    ) : (
+                      <li className="text-gray-600">No strengths information available</li>
+                    )}
                   </ul>
                 </div>
                 
@@ -471,9 +475,13 @@ export default function CandidateDetailPage({ params }: { params: { id: string }
                 <div>
                   <h3 className="text-md font-medium text-gray-700 mb-2">Development Areas</h3>
                   <ul className="list-disc pl-5 space-y-1">
-                    {evaluation.analysis_json.developmentAreas.map((area: string, i: number) => (
-                      <li key={i} className="text-gray-600">{area}</li>
-                    ))}
+                    {evaluation.analysis_json.developmentAreas && evaluation.analysis_json.developmentAreas.length > 0 ? (
+                      evaluation.analysis_json.developmentAreas.map((area: string, i: number) => (
+                        <li key={i} className="text-gray-600">{area}</li>
+                      ))
+                    ) : (
+                      <li className="text-gray-600">No development areas information available</li>
+                    )}
                   </ul>
                 </div>
                 
@@ -481,11 +489,21 @@ export default function CandidateDetailPage({ params }: { params: { id: string }
                 <div>
                   <h3 className="text-md font-medium text-gray-700 mb-2">Skills Matched</h3>
                   <div className="flex flex-wrap gap-2">
-                    {evaluation.analysis_json.skillsMatched.map((skill: string, i: number) => (
-                      <span key={i} className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
-                        {skill}
-                      </span>
-                    ))}
+                    {evaluation.analysis_json.skillsMatched && evaluation.analysis_json.skillsMatched.length > 0 ? (
+                      evaluation.analysis_json.skillsMatched.map((skill: string, i: number) => (
+                        <span key={i} className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
+                          {skill}
+                        </span>
+                      ))
+                    ) : evaluation.analysis_json.recommendedSkills && evaluation.analysis_json.recommendedSkills.length > 0 ? (
+                      evaluation.analysis_json.recommendedSkills.map((skill: string, i: number) => (
+                        <span key={i} className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
+                          {skill}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-gray-500">No skills information available</span>
+                    )}
                   </div>
                 </div>
               </div>
