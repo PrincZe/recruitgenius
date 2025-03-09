@@ -11,13 +11,15 @@ interface ResumeUploaderProps {
   onUploadComplete: (resumeIds: string[]) => void;
 }
 
-interface FileWithPreview extends File {
+interface FileWithPreview {
   id: string;
+  name: string;
+  size: number;
+  type: string;
   preview?: string;
   uploadProgress?: number;
   error?: string;
   status: 'pending' | 'uploading' | 'success' | 'error';
-  originalName: string;
 }
 
 export default function ResumeUploader({ jobPostingId, onUploadComplete }: ResumeUploaderProps) {
@@ -25,6 +27,9 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Create a ref to store the actual File objects
+  const fileObjectsRef = useRef<Record<string, File>>({});
 
   // Handle file selection
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,17 +99,31 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
       alert(`${invalidFiles.length} file(s) were rejected. Only PDF files under 10MB are allowed.`);
     }
 
+    // Store the raw file blobs separately to preserve them
+    const fileStore: Record<string, File> = {};
+    
     const filesWithPreview = validFiles.map(file => {
       console.log('Creating preview for file:', file.name);
+      const id = uuidv4();
+      
+      // Store the original file object in our map
+      fileStore[id] = file;
+      
+      // Create a simplified object for state (without the File methods/properties)
       return {
-        ...file,
-        id: uuidv4(),
+        id,
+        name: file.name,
+        size: file.size,
+        type: file.type,
         status: 'pending' as const,
         uploadProgress: 0,
-        originalName: file.name
+        // We don't include the actual File object here as it doesn't serialize well
       };
     });
 
+    // Store the file objects in a ref for later use
+    fileObjectsRef.current = {...fileObjectsRef.current, ...fileStore};
+    
     setFiles(prev => [...prev, ...filesWithPreview]);
   };
 
@@ -116,6 +135,7 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
   // Clear all files
   const clearFiles = () => {
     setFiles([]);
+    fileObjectsRef.current = {}; // Clear the file objects ref
     if (inputRef.current) {
       inputRef.current.value = '';
     }
@@ -132,9 +152,6 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
     const uploadedResumeIds: string[] = [];
     
     try {
-      // Create a deep copy of the files array to avoid reference issues
-      const filesToUpload = files.map(file => ({...file}));
-      
       // Update status of all files to uploading
       setFiles(prev => 
         prev.map(file => ({
@@ -145,19 +162,40 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
       );
 
       // Upload each file in sequence
-      for (let i = 0; i < filesToUpload.length; i++) {
-        const file = filesToUpload[i];
+      for (let i = 0; i < files.length; i++) {
+        const fileInfo = files[i];
+        const originalFile = fileObjectsRef.current[fileInfo.id];
+        
+        if (!originalFile) {
+          console.error('Original file not found in ref:', fileInfo);
+          setFiles(prev => 
+            prev.map(f => 
+              f.id === fileInfo.id 
+                ? { ...f, status: 'error', error: 'Original file lost' } 
+                : f
+            )
+          );
+          continue; // Skip this file
+        }
+        
         const resumeId = uuidv4();
         
-        // Use either the originalName (our backup) or the name property
-        const fileName = (file as any).originalName || file.name;
+        // Get file name from our preserved info
+        const fileName = fileInfo.name;
+        
+        console.log('Retrieved original file object:', {
+          name: originalFile.name,
+          size: originalFile.size,
+          type: originalFile.type,
+          hasSlice: typeof originalFile.slice === 'function'
+        });
         
         // Make sure we have a valid filename
         if (!fileName) {
-          console.error('File name is missing or undefined', file);
+          console.error('File name is missing or undefined', fileInfo);
           setFiles(prev => 
             prev.map(f => 
-              f.id === file.id 
+              f.id === fileInfo.id 
                 ? { ...f, status: 'error', error: 'File name is missing' } 
                 : f
             )
@@ -169,12 +207,12 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
         const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
         const filePath = `${resumeId}/${safeFileName}`;
         
-        console.log(`Processing file: ${safeFileName}, size: ${file.size}, type: ${file.type}`);
+        console.log(`Processing file: ${safeFileName}, size: ${originalFile.size}, type: ${originalFile.type}`);
         
         // Update current file progress
         setFiles(prev => 
           prev.map(f => 
-            f.id === file.id 
+            f.id === fileInfo.id 
               ? { ...f, uploadProgress: 10 } 
               : f
           )
@@ -183,13 +221,13 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
         // Extract text from PDF
         let contentText = '';
         try {
-          contentText = await extractTextFromPdf(file);
+          contentText = await extractTextFromPdf(originalFile);
           console.log(`Extracted ${contentText.length} characters of text from PDF`);
           
           // Update file progress after extraction
           setFiles(prev => 
             prev.map(f => 
-              f.id === file.id 
+              f.id === fileInfo.id 
                 ? { ...f, uploadProgress: 30 } 
                 : f
             )
@@ -203,19 +241,10 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
         // 1. Upload file to Storage
         console.log('Uploading file to path:', `private/${filePath}`);
         try {
-          // Create a clean File object to avoid any issues with extended properties
-          const fileBlob = file.slice(0, file.size, file.type);
-          const cleanFile = new File([fileBlob], safeFileName, {type: file.type});
-          
-          console.log('Created clean file object:', {
-            name: cleanFile.name,
-            size: cleanFile.size,
-            type: cleanFile.type
-          });
-          
+          // Use the original file object directly
           const { data: storageData, error: storageError } = await supabase.storage
             .from('resumes')
-            .upload(`private/${filePath}`, cleanFile, {
+            .upload(`private/${filePath}`, originalFile, {
               cacheControl: '3600',
               upsert: false
             });
@@ -225,12 +254,7 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
               message: storageError.message,
               details: storageError,
               path: `private/${filePath}`,
-              bucket: 'resumes',
-              fileInfo: {
-                name: file.name,
-                size: file.size,
-                type: file.type
-              }
+              bucket: 'resumes'
             });
             throw new Error(`Storage error: ${storageError.message}`);
           }
@@ -240,7 +264,7 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
           // Update file progress
           setFiles(prev => 
             prev.map(f => 
-              f.id === file.id 
+              f.id === fileInfo.id 
                 ? { ...f, uploadProgress: 50 } 
                 : f
             )
@@ -263,7 +287,7 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
                   id: resumeId,
                   file_url: fileUrl,
                   file_name: fileName,
-                  file_size: file.size,
+                  file_size: originalFile.size,
                   content_text: contentText,
                   job_posting_id: jobPostingId
                 }
@@ -280,7 +304,7 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
             // 3. Update file status to success
             setFiles(prev => 
               prev.map(f => 
-                f.id === file.id 
+                f.id === fileInfo.id 
                   ? { ...f, status: 'success', uploadProgress: 100 } 
                   : f
               )
@@ -292,7 +316,7 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
             console.error('Error creating database entry:', dbError);
             setFiles(prev => 
               prev.map(f => 
-                f.id === file.id 
+                f.id === fileInfo.id 
                   ? { ...f, status: 'error', error: dbError instanceof Error ? dbError.message : 'Database error' } 
                   : f
               )
@@ -302,7 +326,7 @@ export default function ResumeUploader({ jobPostingId, onUploadComplete }: Resum
           console.error('Error uploading file to storage:', uploadError);
           setFiles(prev => 
             prev.map(f => 
-              f.id === file.id 
+              f.id === fileInfo.id 
                 ? { ...f, status: 'error', error: uploadError instanceof Error ? uploadError.message : 'Upload error' } 
                 : f
             )
