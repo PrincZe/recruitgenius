@@ -49,6 +49,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
     const fetchCandidate = async () => {
       try {
         setLoading(true);
+        setError(null);
         const { data, error } = await supabase
           .from('resume_evaluations')
           .select(`
@@ -69,6 +70,8 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
         
         if (error) {
           console.error('Error fetching candidate:', error);
+          setError(`Failed to load candidate data: ${error.message}`);
+          setLoading(false);
           return;
         }
         
@@ -84,8 +87,9 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
           // Try to fetch the existing session
           checkForExistingSession(data);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error fetching candidate:', error);
+        setError(`An unexpected error occurred: ${error?.message || 'Unknown error'}`);
       } finally {
         setLoading(false);
       }
@@ -281,7 +285,18 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
   useEffect(() => {
     // Fetch recordings for the candidate
     const fetchRecordings = async () => {
-      if (!candidate?.resume?.id) return;
+      if (!candidate) {
+        setLoadingRecordings(false);
+        return;
+      }
+      
+      // Make sure we have a valid resume ID
+      const resumeId = candidate?.resume?.id;
+      if (!resumeId) {
+        console.log('No resume ID found for candidate, cannot fetch recordings');
+        setLoadingRecordings(false);
+        return;
+      }
       
       try {
         setLoadingRecordings(true);
@@ -290,18 +305,22 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
         const { data: candidateData, error: candidateError } = await supabase
           .from('candidates')
           .select('id')
-          .eq('resume_id', candidate.resume.id)
+          .eq('resume_id', resumeId)
           .maybeSingle();
         
         if (candidateError) {
           console.error('Error fetching candidate:', candidateError);
+          setLoadingRecordings(false);
           return;
         }
         
         if (!candidateData?.id) {
           console.log('No candidate found linked to this resume');
+          setLoadingRecordings(false);
           return;
         }
+        
+        console.log('Found candidate ID for recordings:', candidateData.id);
         
         // Get recordings for this candidate
         const { data: recordingsData, error: recordingsError } = await supabase
@@ -312,9 +331,11 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
         
         if (recordingsError) {
           console.error('Error fetching recordings:', recordingsError);
+          setLoadingRecordings(false);
           return;
         }
         
+        console.log('Fetched recordings:', recordingsData?.length || 0);
         setRecordings(recordingsData || []);
         
         // Fetch question details for each recording
@@ -348,7 +369,9 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
       }
     };
     
-    fetchRecordings();
+    if (candidate) {
+      fetchRecordings();
+    }
   }, [candidate]);
   
   // Helper function to render sentiment type with icon
@@ -395,8 +418,32 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
     return <LoadingState />;
   }
   
+  if (error) {
+    return (
+      <div className="p-8">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative">
+          <strong className="font-bold">Error: </strong>
+          <span className="block sm:inline">{error}</span>
+          <p className="mt-2">
+            Please try refreshing the page or go back to the <Link href="/admin/candidates" className="underline">candidates list</Link>.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  
   if (!candidate) {
-    return <div className="p-8 text-center">Candidate not found</div>;
+    return (
+      <div className="p-8 text-center">
+        <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded relative">
+          <strong className="font-bold">Not Found: </strong>
+          <span className="block sm:inline">Candidate data could not be loaded.</span>
+          <p className="mt-2">
+            Please check the candidate ID and try again or go back to the <Link href="/admin/candidates" className="underline">candidates list</Link>.
+          </p>
+        </div>
+      </div>
+    );
   }
   
   // Extract analysis data
