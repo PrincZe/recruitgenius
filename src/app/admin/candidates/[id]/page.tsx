@@ -179,9 +179,9 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
           {
             id: sessionId,
             candidate_id: candidateId,
-            job_posting_id: candidate.job_posting_id,
             questions: ['Tell me about your experience as an engineering manager', 'How do you handle team conflicts?', 'Describe a challenging project you led'],
-            progress: 0,
+            started_at: new Date().toISOString(),
+            completed_at: null,
             is_completed: false
           }
         ]);
