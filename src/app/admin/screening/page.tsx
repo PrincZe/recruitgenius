@@ -320,32 +320,44 @@ export default function ScreeningPage() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm text-gray-900">
-                              {evaluation.overall_score.toFixed(1)}
+                              {evaluation.overall_score !== null && evaluation.overall_score !== undefined
+                                ? evaluation.overall_score.toFixed(1)
+                                : 'N/A'}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm text-gray-900">
-                              L{evaluation.ownership_level} ({evaluation.ownership_score.toFixed(1)})
+                              L{evaluation.ownership_level || 0} ({evaluation.ownership_score !== null && evaluation.ownership_score !== undefined
+                                ? evaluation.ownership_score.toFixed(1)
+                                : 'N/A'})
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm text-gray-900">
-                              L{evaluation.organization_impact_level} ({evaluation.organization_impact_score.toFixed(1)})
+                              L{evaluation.organization_impact_level || 0} ({evaluation.organization_impact_score !== null && evaluation.organization_impact_score !== undefined
+                                ? evaluation.organization_impact_score.toFixed(1)
+                                : 'N/A'})
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm text-gray-900">
-                              L{evaluation.independence_level} ({evaluation.independence_score.toFixed(1)})
+                              L{evaluation.independence_level || 0} ({evaluation.independence_score !== null && evaluation.independence_score !== undefined
+                                ? evaluation.independence_score.toFixed(1)
+                                : 'N/A'})
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm text-gray-900">
-                              L{evaluation.strategic_alignment_level} ({evaluation.strategic_alignment_score.toFixed(1)})
+                              L{evaluation.strategic_alignment_level || 0} ({evaluation.strategic_alignment_score !== null && evaluation.strategic_alignment_score !== undefined
+                                ? evaluation.strategic_alignment_score.toFixed(1)
+                                : 'N/A'})
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm text-gray-900">
-                              L{evaluation.skills_level} ({evaluation.skills_score.toFixed(1)})
+                              L{evaluation.skills_level || 0} ({evaluation.skills_score !== null && evaluation.skills_score !== undefined
+                                ? evaluation.skills_score.toFixed(1)
+                                : 'N/A'})
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">

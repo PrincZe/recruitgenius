@@ -636,13 +636,26 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
         {/* Overall Score Card */}
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-4">Overall Score</h2>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-3xl font-bold">{candidate.overall_score.toFixed(0)}<span className="text-xl font-normal text-gray-500">/100</span></span>
+          <div className="flex justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Overall Score</h3>
+              <p className="text-sm text-gray-500">Based on the 5-dimension evaluation</p>
+            </div>
+            <div className="text-right">
+              <span className="text-3xl font-bold">
+                {candidate.overall_score !== null && candidate.overall_score !== undefined
+                  ? candidate.overall_score.toFixed(0)
+                  : 'N/A'}<span className="text-xl font-normal text-gray-500">/100</span>
+              </span>
+            </div>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-2.5">
+          
+          <div className="w-full bg-gray-200 rounded-full h-2.5 mb-6">
             <div
               className="bg-blue-600 h-2.5 rounded-full"
-              style={{ width: `${Math.min(Math.max(candidate.overall_score, 0), 100)}%` }}
+              style={{ width: `${candidate.overall_score !== null && candidate.overall_score !== undefined 
+                ? Math.min(Math.max(candidate.overall_score, 0), 100) 
+                : 0}%` }}
             ></div>
           </div>
           <p className="mt-4 text-gray-500 text-sm">
@@ -657,12 +670,16 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <div className="flex justify-between mb-1">
                 <span>Ownership <span className="text-xs text-gray-500">L{candidate.ownership_level || 4}</span></span>
-                <span>{candidate.ownership_score.toFixed(1)}/10</span>
+                <span>{candidate.ownership_score !== null && candidate.ownership_score !== undefined
+                  ? candidate.ownership_score.toFixed(1)
+                  : 'N/A'}/10</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
                   className="bg-blue-600 h-2 rounded-full"
-                  style={{ width: `${Math.min(Math.max(candidate.ownership_score * 10, 0), 100)}%` }}
+                  style={{ width: `${candidate.ownership_score !== null && candidate.ownership_score !== undefined
+                    ? Math.min(Math.max(candidate.ownership_score * 10, 0), 100)
+                    : 0}%` }}
                 ></div>
               </div>
             </div>
@@ -670,12 +687,16 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <div className="flex justify-between mb-1">
                 <span>Organization Impact <span className="text-xs text-gray-500">L{candidate.organization_impact_level || 4}</span></span>
-                <span>{candidate.organization_impact_score.toFixed(1)}/10</span>
+                <span>{candidate.organization_impact_score !== null && candidate.organization_impact_score !== undefined
+                  ? candidate.organization_impact_score.toFixed(1)
+                  : 'N/A'}/10</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
                   className="bg-blue-600 h-2 rounded-full"
-                  style={{ width: `${Math.min(Math.max(candidate.organization_impact_score * 10, 0), 100)}%` }}
+                  style={{ width: `${candidate.organization_impact_score !== null && candidate.organization_impact_score !== undefined
+                    ? Math.min(Math.max(candidate.organization_impact_score * 10, 0), 100)
+                    : 0}%` }}
                 ></div>
               </div>
             </div>
@@ -683,12 +704,16 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <div className="flex justify-between mb-1">
                 <span>Independence <span className="text-xs text-gray-500">L{candidate.independence_level || 4}</span></span>
-                <span>{candidate.independence_score.toFixed(1)}/10</span>
+                <span>{candidate.independence_score !== null && candidate.independence_score !== undefined
+                  ? candidate.independence_score.toFixed(1)
+                  : 'N/A'}/10</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
                   className="bg-blue-600 h-2 rounded-full"
-                  style={{ width: `${Math.min(Math.max(candidate.independence_score * 10, 0), 100)}%` }}
+                  style={{ width: `${candidate.independence_score !== null && candidate.independence_score !== undefined
+                    ? Math.min(Math.max(candidate.independence_score * 10, 0), 100)
+                    : 0}%` }}
                 ></div>
               </div>
             </div>
@@ -696,12 +721,16 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <div className="flex justify-between mb-1">
                 <span>Strategic Alignment <span className="text-xs text-gray-500">L{candidate.strategic_alignment_level || 4}</span></span>
-                <span>{candidate.strategic_alignment_score.toFixed(1)}/10</span>
+                <span>{candidate.strategic_alignment_score !== null && candidate.strategic_alignment_score !== undefined
+                  ? candidate.strategic_alignment_score.toFixed(1)
+                  : 'N/A'}/10</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
                   className="bg-blue-600 h-2 rounded-full"
-                  style={{ width: `${Math.min(Math.max(candidate.strategic_alignment_score * 10, 0), 100)}%` }}
+                  style={{ width: `${candidate.strategic_alignment_score !== null && candidate.strategic_alignment_score !== undefined
+                    ? Math.min(Math.max(candidate.strategic_alignment_score * 10, 0), 100)
+                    : 0}%` }}
                 ></div>
               </div>
             </div>
@@ -857,7 +886,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
                         <div className="bg-gray-50 p-4 rounded-md">
                           <p className="text-sm font-medium text-gray-500 mb-1">Sentiment Score</p>
                           <div className="text-lg font-semibold">
-                            {recording.sentiment_score.toFixed(2)}
+                            {recording.sentiment_score !== null ? recording.sentiment_score.toFixed(2) : 'N/A'}
                           </div>
                         </div>
                       )}
@@ -874,10 +903,10 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
                       <div className="bg-gray-50 p-4 rounded-md">
                         <p className="text-sm font-medium text-gray-500 mb-2">Topics Mentioned</p>
                         <div className="flex flex-wrap gap-2">
-                          {recording.topics.map((topic: any) => (
-                            <div key={topic.topic} className="bg-blue-100 text-blue-800 px-2 py-1 text-xs rounded-full">
+                          {recording.topics.map((topic: any, idx: number) => (
+                            <span key={idx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 mr-2 mb-2">
                               {topic.topic} {topic.confidence && `(${(topic.confidence * 100).toFixed(0)}%)`}
-                            </div>
+                            </span>
                           ))}
                         </div>
                       </div>
