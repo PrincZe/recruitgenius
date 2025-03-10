@@ -49,8 +49,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             resume:resume_id (
               id,
               file_name,
-              file_url,
-              job_posting_id
+              file_url
             ),
             job_posting:job_posting_id (
               id,
