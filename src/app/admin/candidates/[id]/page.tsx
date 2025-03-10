@@ -50,7 +50,12 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
       try {
         setLoading(true);
         setError(null);
-        const { data, error } = await supabase
+        
+        // First check if the ID is for a resume_evaluation or a candidate
+        let candidateData;
+        
+        // Try to fetch as a resume_evaluation first
+        const { data: evaluationData, error: evaluationError } = await supabase
           .from('resume_evaluations')
           .select(`
             *,
@@ -66,26 +71,75 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             )
           `)
           .eq('id', candidateId)
-          .single();
+          .maybeSingle();
         
-        if (error) {
-          console.error('Error fetching candidate:', error);
-          setError(`Failed to load candidate data: ${error.message}`);
+        if (evaluationError) {
+          console.error('Error fetching resume evaluation:', evaluationError);
+          
+          // If not found as an evaluation, try as a candidate
+          const { data: directCandidateData, error: directCandidateError } = await supabase
+            .from('candidates')
+            .select(`
+              *,
+              resume:resume_id (
+                id,
+                file_name,
+                file_url
+              )
+            `)
+            .eq('id', candidateId)
+            .maybeSingle();
+            
+          if (directCandidateError) {
+            console.error('Error fetching direct candidate:', directCandidateError);
+            setError(`Failed to load candidate data: ${directCandidateError.message}`);
+            setLoading(false);
+            return;
+          }
+          
+          if (!directCandidateData) {
+            setError(`No candidate found with ID: ${candidateId}`);
+            setLoading(false);
+            return;
+          }
+          
+          candidateData = directCandidateData;
+          
+          // For direct candidate, we need to fetch the evaluation data too if it exists
+          if (directCandidateData.resume_id) {
+            const { data: linkedEvaluation, error: linkedEvalError } = await supabase
+              .from('resume_evaluations')
+              .select('*')
+              .eq('resume_id', directCandidateData.resume_id)
+              .maybeSingle();
+              
+            if (!linkedEvalError && linkedEvaluation) {
+              // Merge evaluation data into candidate data
+              candidateData = { ...directCandidateData, ...linkedEvaluation };
+            }
+          }
+        } else {
+          candidateData = evaluationData;
+        }
+        
+        if (!candidateData) {
+          setError(`Candidate data not found for ID: ${candidateId}`);
           setLoading(false);
           return;
         }
         
         // Set the filename for display
-        if (data?.resume?.file_name) {
-          setFileName(data.resume.file_name.replace('.pdf', ''));
+        if (candidateData?.resume?.file_name) {
+          setFileName(candidateData.resume.file_name.replace('.pdf', ''));
         }
         
-        setCandidate(data);
+        console.log('Successfully loaded candidate data:', candidateData);
+        setCandidate(candidateData);
         
         // Check if this candidate already has an interview link
-        if (data.selected_for_interview) {
+        if (candidateData.selected_for_interview) {
           // Try to fetch the existing session
-          checkForExistingSession(data);
+          checkForExistingSession(candidateData);
         }
       } catch (error: any) {
         console.error('Error fetching candidate:', error);
@@ -285,66 +339,82 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
   useEffect(() => {
     // Fetch recordings for the candidate
     const fetchRecordings = async () => {
-      if (!candidate) {
-        setLoadingRecordings(false);
-        return;
-      }
-      
-      // Make sure we have a valid resume ID
-      const resumeId = candidate?.resume?.id;
-      if (!resumeId) {
-        console.log('No resume ID found for candidate, cannot fetch recordings');
-        setLoadingRecordings(false);
-        return;
-      }
-      
       try {
         setLoadingRecordings(true);
+        console.log('Fetching recordings for candidate ID:', candidateId);
         
-        // First, find the candidate_id that might be linked to this resume
-        const { data: candidateData, error: candidateError } = await supabase
-          .from('candidates')
-          .select('id')
-          .eq('resume_id', resumeId)
-          .maybeSingle();
-        
-        if (candidateError) {
-          console.error('Error fetching candidate:', candidateError);
-          setLoadingRecordings(false);
-          return;
-        }
-        
-        if (!candidateData?.id) {
-          console.log('No candidate found linked to this resume');
-          setLoadingRecordings(false);
-          return;
-        }
-        
-        console.log('Found candidate ID for recordings:', candidateData.id);
-        
-        // Get recordings for this candidate
-        const { data: recordingsData, error: recordingsError } = await supabase
+        // Try to get recordings directly based on the URL candidate ID
+        let { data: directRecordings, error: directError } = await supabase
           .from('recordings')
           .select('*')
-          .eq('candidate_id', candidateData.id)
+          .eq('candidate_id', candidateId)
           .order('created_at', { ascending: true });
-        
-        if (recordingsError) {
-          console.error('Error fetching recordings:', recordingsError);
-          setLoadingRecordings(false);
-          return;
+          
+        if (directError) {
+          console.error('Error fetching recordings directly:', directError);
         }
         
-        console.log('Fetched recordings:', recordingsData?.length || 0);
-        setRecordings(recordingsData || []);
+        // If we found recordings directly, use them
+        if (directRecordings && directRecordings.length > 0) {
+          console.log('Found recordings directly with candidate_id:', directRecordings.length);
+          setRecordings(directRecordings);
+        }
+        // Otherwise try to find via resume ID if candidate has resume data
+        else if (candidate?.resume?.id) {
+          console.log('Trying to find candidate via resume_id:', candidate.resume.id);
+          
+          // Find the candidate_id that might be linked to this resume
+          const { data: candidateData, error: candidateError } = await supabase
+            .from('candidates')
+            .select('id')
+            .eq('resume_id', candidate.resume.id)
+            .maybeSingle();
+          
+          if (candidateError) {
+            console.error('Error finding candidate from resume:', candidateError);
+            setLoadingRecordings(false);
+            return;
+          }
+          
+          if (!candidateData?.id) {
+            console.log('No candidate found linked to this resume');
+            setLoadingRecordings(false);
+            return;
+          }
+          
+          console.log('Found candidate ID via resume:', candidateData.id);
+          
+          // Get recordings for this resolved candidate
+          const { data: recordingsData, error: recordingsError } = await supabase
+            .from('recordings')
+            .select('*')
+            .eq('candidate_id', candidateData.id)
+            .order('created_at', { ascending: true });
+          
+          if (recordingsError) {
+            console.error('Error fetching recordings:', recordingsError);
+            setLoadingRecordings(false);
+            return;
+          }
+          
+          console.log('Found recordings via resume relationship:', recordingsData?.length || 0);
+          setRecordings(recordingsData || []);
+        } else {
+          console.log('No resume ID and no direct recordings found');
+          setRecordings([]);
+        }
         
-        // Fetch question details for each recording
-        const questionIds = recordingsData?.map(r => r.question_id) || [];
+        // Fetch questions for all recordings
+        const allRecordings = directRecordings?.length ? directRecordings : recordings;
+        const questionIds = allRecordings?.map(r => r.question_id) || [];
+        
         if (questionIds.length > 0) {
-          // Use a more TypeScript-friendly approach to get unique IDs
+          // Get unique question IDs
           const uniqueQuestionIds = questionIds.filter((id, index) => 
             questionIds.indexOf(id) === index
           );
+          
+          console.log('Fetching details for questions:', uniqueQuestionIds);
           
           const { data: questionsData, error: questionsError } = await supabase
             .from('questions')
@@ -359,6 +429,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             questionsData?.forEach(q => {
               questionsMap[q.id] = q;
             });
+            console.log('Questions map created:', Object.keys(questionsMap).length);
             setQuestions(questionsMap);
           }
         }
@@ -369,10 +440,11 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
       }
     };
     
-    if (candidate) {
+    // Only fetch recordings when candidateId is available
+    if (candidateId) {
       fetchRecordings();
     }
-  }, [candidate]);
+  }, [candidateId, candidate]);
   
   // Helper function to render sentiment type with icon
   const renderSentimentType = (type: string | undefined) => {
