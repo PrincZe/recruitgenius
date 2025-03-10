@@ -40,6 +40,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
   const [generatingLink, setGeneratingLink] = useState(false);
   const [interviewLink, setInterviewLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [defaultQuestions, setDefaultQuestions] = useState<any[]>([]);
   
   useEffect(() => {
     const fetchCandidate = async () => {
@@ -89,6 +90,33 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
     
     fetchCandidate();
   }, [candidateId]);
+  
+  useEffect(() => {
+    // Fetch questions from the database
+    const fetchQuestions = async () => {
+      try {
+        const { data: questions, error } = await supabase
+          .from('questions')
+          .select('id, text')
+          .limit(3);
+          
+        if (error) {
+          console.error('Error fetching questions:', error);
+          return;
+        }
+        
+        if (questions && questions.length > 0) {
+          setDefaultQuestions(questions.map(q => q.id));
+        } else {
+          console.log('No questions found in the database');
+        }
+      } catch (err) {
+        console.error('Error loading questions:', err);
+      }
+    };
+    
+    fetchQuestions();
+  }, []);
   
   // Function to check if the candidate already has an interview session
   const checkForExistingSession = async (candidateData: any) => {
@@ -171,6 +199,38 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
         throw new Error('Could not create or find a candidate record');
       }
       
+      // Prepare question IDs - use default questions from database if available,
+      // otherwise use hardcoded defaults for testing
+      let questionIds = defaultQuestions;
+      if (questionIds.length === 0) {
+        // If no questions were found in the database, create some basic ones first
+        try {
+          // Add some default questions
+          const defaultQuestionTexts = [
+            "Tell me about your experience as an engineering manager",
+            "How do you handle team conflicts?",
+            "Describe a challenging project you led"
+          ];
+          
+          // Create the questions in database
+          const createdQuestionIds = [];
+          for (const text of defaultQuestionTexts) {
+            const { data, error } = await supabase
+              .from('questions')
+              .insert([{ text, category: 'General' }])
+              .select();
+              
+            if (!error && data && data.length > 0) {
+              createdQuestionIds.push(data[0].id);
+            }
+          }
+          
+          questionIds = createdQuestionIds;
+        } catch (err) {
+          console.error('Error creating default questions:', err);
+        }
+      }
+      
       // 2. Create a session
       const sessionId = uuidv4();
       const { error: sessionError } = await supabase
@@ -179,7 +239,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
           {
             id: sessionId,
             candidate_id: candidateId,
-            questions: ['Tell me about your experience as an engineering manager', 'How do you handle team conflicts?', 'Describe a challenging project you led'],
+            questions: questionIds,
             started_at: new Date().toISOString(),
             completed_at: null,
             is_completed: false
@@ -201,7 +261,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
       const interviewUrl = `${window.location.origin}/interview/${sessionId}`;
       setInterviewLink(interviewUrl);
       
-      // 5. Update candidate with session ID if needed
+      // 5. Update candidate with session ID
       await supabase
         .from('candidates')
         .update({ session_id: sessionId })
