@@ -501,10 +501,32 @@ export default function InterviewQuestionsClient({ params }: { params: { session
           )}
           
           <div className="mb-6">
-            <TextToSpeech 
-              text={currentQuestion.text} 
-              autoPlay={true}
-            />
+            <div className="flex flex-col items-start">
+              <button 
+                className="mb-4 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+                onClick={() => document.getElementById('question-audio-btn')?.click()}
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15.536a5 5 0 001.414 1.414m2.828-9.9a9 9 0 013.5-2.628"></path>
+                </svg>
+                Play Question Audio
+              </button>
+              
+              <div className="hidden">
+                <TextToSpeech 
+                  text={currentQuestion.text} 
+                  autoPlay={false}
+                  voice="alloy"
+                />
+              </div>
+              
+              <button id="question-audio-btn" className="hidden" onClick={() => {
+                const audioButton = document.querySelector('[aria-label="Play audio"]') as HTMLButtonElement;
+                if (audioButton) {
+                  audioButton.click();
+                }
+              }}></button>
+            </div>
           </div>
           
           <div className="mb-6">
