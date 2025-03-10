@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { v4 as uuidv4 } from 'uuid';
 import { 
   Loader2, 
   ArrowLeft, 
@@ -16,7 +17,6 @@ import {
   Mail
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/supabaseClient';
-import { v4 as uuidv4 } from 'uuid';
 import { format } from 'date-fns';
 import { Suspense } from 'react';
 
@@ -37,6 +37,9 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
   const [loading, setLoading] = useState(true);
   const [candidate, setCandidate] = useState<any>(null);
   const [fileName, setFileName] = useState<string>('');
+  const [generatingLink, setGeneratingLink] = useState(false);
+  const [interviewLink, setInterviewLink] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   
   useEffect(() => {
     const fetchCandidate = async () => {
@@ -71,6 +74,12 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
         }
         
         setCandidate(data);
+        
+        // Check if this candidate already has an interview link
+        if (data.selected_for_interview) {
+          // Try to fetch the existing session
+          checkForExistingSession(data);
+        }
       } catch (error) {
         console.error('Error fetching candidate:', error);
       } finally {
@@ -80,6 +89,131 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
     
     fetchCandidate();
   }, [candidateId]);
+  
+  // Function to check if the candidate already has an interview session
+  const checkForExistingSession = async (candidateData: any) => {
+    try {
+      // First, we need a candidate entry to link the session to
+      let candidateId = await ensureCandidateExists(candidateData);
+      
+      if (!candidateId) {
+        return;
+      }
+      
+      // Check for existing session
+      const { data: sessionData } = await supabase
+        .from('sessions')
+        .select('*')
+        .eq('candidate_id', candidateId)
+        .maybeSingle();
+        
+      if (sessionData) {
+        // If there's an existing session, show its link
+        const interviewUrl = `${window.location.origin}/interview/${sessionData.id}`;
+        setInterviewLink(interviewUrl);
+      }
+    } catch (error) {
+      console.error('Error checking for existing session:', error);
+    }
+  };
+  
+  // Function to ensure a candidate record exists
+  const ensureCandidateExists = async (evaluationData: any): Promise<string | null> => {
+    // Try to find if a candidate record already exists for this resume
+    const { data: existingCandidates } = await supabase
+      .from('candidates')
+      .select('id, name, email')
+      .eq('resume_id', evaluationData.resume_id)
+      .maybeSingle();
+      
+    if (existingCandidates) {
+      return existingCandidates.id;
+    }
+    
+    // If no candidate exists, create one
+    const candidateName = fileName || 'Candidate';
+    const candidateEmail = `${candidateName.toLowerCase().replace(/\s+/g, '.')}@example.com`;
+    
+    const { data: newCandidate, error } = await supabase
+      .from('candidates')
+      .insert([
+        {
+          name: candidateName,
+          email: candidateEmail,
+          resume_id: evaluationData.resume_id
+        }
+      ])
+      .select()
+      .single();
+      
+    if (error) {
+      console.error('Error creating candidate:', error);
+      return null;
+    }
+    
+    return newCandidate.id;
+  };
+  
+  // Function to generate the interview link
+  const generateInterviewLink = async () => {
+    setGeneratingLink(true);
+    setError(null);
+    
+    try {
+      if (!candidate) {
+        throw new Error('Candidate information not found');
+      }
+      
+      // 1. Ensure a candidate record exists
+      const candidateId = await ensureCandidateExists(candidate);
+      
+      if (!candidateId) {
+        throw new Error('Could not create or find a candidate record');
+      }
+      
+      // 2. Create a session
+      const sessionId = uuidv4();
+      const { error: sessionError } = await supabase
+        .from('sessions')
+        .insert([
+          {
+            id: sessionId,
+            candidate_id: candidateId,
+            job_posting_id: candidate.job_posting_id,
+            questions: ['Tell me about your experience as an engineering manager', 'How do you handle team conflicts?', 'Describe a challenging project you led'],
+            progress: 0,
+            is_completed: false
+          }
+        ]);
+      
+      if (sessionError) {
+        console.error('Error creating session:', sessionError);
+        throw new Error('Failed to create interview session');
+      }
+      
+      // 3. Mark the evaluation as selected for interview
+      await supabase
+        .from('resume_evaluations')
+        .update({ selected_for_interview: true })
+        .eq('id', candidate.id);
+      
+      // 4. Generate interview link
+      const interviewUrl = `${window.location.origin}/interview/${sessionId}`;
+      setInterviewLink(interviewUrl);
+      
+      // 5. Update candidate with session ID if needed
+      await supabase
+        .from('candidates')
+        .update({ session_id: sessionId })
+        .eq('id', candidateId);
+        
+    } catch (err: any) {
+      console.error('Error generating interview link:', err);
+      setError(err.message || 'Failed to generate interview link');
+    } finally {
+      setGeneratingLink(false);
+    }
+  };
   
   if (loading) {
     return <LoadingState />;
@@ -108,28 +242,52 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
           </p>
         </div>
         <div className="mt-4 md:mt-0">
-          <button
-            className={`inline-flex items-center px-4 py-2 rounded-md font-medium text-sm ${
-              candidate.selected_for_interview
-                ? 'bg-green-100 text-green-800'
-                : 'bg-blue-600 text-white hover:bg-blue-700'
-            }`}
-            onClick={async () => {
-              // Handle inviting to interview logic
-            }}
-          >
-            {candidate.selected_for_interview ? (
-              <>
+          {interviewLink ? (
+            <div className="space-y-2">
+              <div className="flex items-center text-green-600 font-medium">
                 <CheckCircle className="w-4 h-4 mr-2" />
-                Selected for Interview
-              </>
-            ) : (
-              <>
-                <Mail className="w-4 h-4 mr-2" />
-                Invite to Interview
-              </>
-            )}
-          </button>
+                Interview Ready
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="text"
+                  value={interviewLink}
+                  readOnly
+                  className="text-sm px-3 py-2 border rounded-l-md focus:outline-none flex-1 w-60"
+                />
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(interviewLink);
+                    alert('Interview link copied to clipboard!');
+                  }}
+                  className="bg-blue-600 text-white px-3 py-2 text-sm rounded-r-md hover:bg-blue-700"
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              className="inline-flex items-center px-4 py-2 rounded-md font-medium text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed"
+              onClick={generateInterviewLink}
+              disabled={generatingLink}
+            >
+              {generatingLink ? (
+                <>
+                  <span className="animate-spin mr-2">⟳</span>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Mail className="w-4 h-4 mr-2" />
+                  Invite to Interview
+                </>
+              )}
+            </button>
+          )}
+          {error && (
+            <p className="text-red-500 text-xs mt-1">{error}</p>
+          )}
         </div>
       </header>
       
