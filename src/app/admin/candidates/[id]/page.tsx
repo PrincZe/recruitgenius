@@ -41,6 +41,9 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
   const [interviewLink, setInterviewLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [defaultQuestions, setDefaultQuestions] = useState<any[]>([]);
+  const [loadingRecordings, setLoadingRecordings] = useState(false);
+  const [recordings, setRecordings] = useState<any[]>([]);
+  const [questions, setQuestions] = useState<Record<string, any>>({});
   
   useEffect(() => {
     const fetchCandidate = async () => {
@@ -275,6 +278,119 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
     }
   };
   
+  useEffect(() => {
+    // Fetch recordings for the candidate
+    const fetchRecordings = async () => {
+      if (!candidate?.resume?.id) return;
+      
+      try {
+        setLoadingRecordings(true);
+        
+        // First, find the candidate_id that might be linked to this resume
+        const { data: candidateData, error: candidateError } = await supabase
+          .from('candidates')
+          .select('id')
+          .eq('resume_id', candidate.resume.id)
+          .maybeSingle();
+        
+        if (candidateError) {
+          console.error('Error fetching candidate:', candidateError);
+          return;
+        }
+        
+        if (!candidateData?.id) {
+          console.log('No candidate found linked to this resume');
+          return;
+        }
+        
+        // Get recordings for this candidate
+        const { data: recordingsData, error: recordingsError } = await supabase
+          .from('recordings')
+          .select('*')
+          .eq('candidate_id', candidateData.id)
+          .order('created_at', { ascending: true });
+        
+        if (recordingsError) {
+          console.error('Error fetching recordings:', recordingsError);
+          return;
+        }
+        
+        setRecordings(recordingsData || []);
+        
+        // Fetch question details for each recording
+        const questionIds = recordingsData?.map(r => r.question_id) || [];
+        if (questionIds.length > 0) {
+          // Use a more TypeScript-friendly approach to get unique IDs
+          const uniqueQuestionIds = questionIds.filter((id, index) => 
+            questionIds.indexOf(id) === index
+          );
+          
+          const { data: questionsData, error: questionsError } = await supabase
+            .from('questions')
+            .select('*')
+            .in('id', uniqueQuestionIds);
+          
+          if (questionsError) {
+            console.error('Error fetching questions:', questionsError);
+          } else {
+            // Convert to a map for easy lookup
+            const questionsMap: Record<string, any> = {};
+            questionsData?.forEach(q => {
+              questionsMap[q.id] = q;
+            });
+            setQuestions(questionsMap);
+          }
+        }
+      } catch (err) {
+        console.error('Error loading recordings:', err);
+      } finally {
+        setLoadingRecordings(false);
+      }
+    };
+    
+    fetchRecordings();
+  }, [candidate]);
+  
+  // Helper function to render sentiment type with icon
+  const renderSentimentType = (type: string | undefined) => {
+    if (!type) return null;
+    
+    let icon = '😐';
+    let color = 'text-gray-500';
+    
+    switch (type.toLowerCase()) {
+      case 'positive':
+        icon = '😊';
+        color = 'text-green-500';
+        break;
+      case 'negative':
+        icon = '😟';
+        color = 'text-red-500';
+        break;
+      case 'neutral':
+        icon = '😐';
+        color = 'text-gray-500';
+        break;
+    }
+    
+    return (
+      <span className={`font-medium ${color}`}>
+        {icon} {type}
+      </span>
+    );
+  };
+
+  // Helper function to format date
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+  
   if (loading) {
     return <LoadingState />;
   }
@@ -489,6 +605,119 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <p className="text-gray-500">No resume file available</p>
           )}
         </div>
+      </div>
+      
+      {/* Interview Recordings Section */}
+      <div className="mt-6">
+        <h2 className="text-2xl font-bold mb-4">Interview Recordings</h2>
+        
+        {loadingRecordings ? (
+          <div className="flex justify-center p-8">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700"></div>
+          </div>
+        ) : recordings.length === 0 ? (
+          <div className="bg-white rounded-lg shadow p-6">
+            <p className="text-gray-500">No interview recordings available for this candidate.</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {recordings.map((recording, index) => (
+              <div key={recording.id} className="bg-white rounded-lg shadow overflow-hidden">
+                <div className="p-6 border-b border-gray-200">
+                  <h3 className="text-lg font-medium mb-2">
+                    Question {index + 1}: {questions[recording.question_id]?.text || 'Unknown Question'}
+                  </h3>
+                  
+                  {questions[recording.question_id]?.category && (
+                    <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                      {questions[recording.question_id].category}
+                    </span>
+                  )}
+                  
+                  <p className="text-sm text-gray-500 mt-2">
+                    Recorded on {formatDate(recording.created_at)}
+                  </p>
+                </div>
+                
+                <div className="p-6 border-b border-gray-200">
+                  <h4 className="text-md font-medium mb-3">Audio Response</h4>
+                  {recording.audio_url ? (
+                    <audio 
+                      src={recording.audio_url} 
+                      controls 
+                      className="w-full"
+                      onError={(e) => {
+                        console.error('Audio playback error:', e);
+                        // Set fallback text when audio fails to load
+                        const target = e.target as HTMLAudioElement;
+                        target.style.display = 'none';
+                        target.parentElement?.appendChild(
+                          Object.assign(document.createElement('div'), {
+                            className: 'p-4 bg-red-50 text-red-700 rounded-md',
+                            textContent: 'Audio playback error. The recording may be corrupted or in an unsupported format.'
+                          })
+                        );
+                      }}
+                    />
+                  ) : (
+                    <div className="p-4 bg-red-50 text-red-700 rounded-md">
+                      Audio format not supported or audio not available
+                    </div>
+                  )}
+                </div>
+                
+                <div className="p-6 border-b border-gray-200">
+                  <h4 className="text-md font-medium mb-3">Transcript</h4>
+                  <div className="p-4 bg-gray-50 rounded-md max-h-48 overflow-y-auto">
+                    <p className="text-gray-700 whitespace-pre-line">{recording.transcript || 'No transcript available'}</p>
+                  </div>
+                </div>
+                
+                {recording.sentiment_type && (
+                  <div className="p-6">
+                    <h4 className="text-md font-medium mb-3">Analysis</h4>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div className="bg-gray-50 p-4 rounded-md">
+                        <p className="text-sm font-medium text-gray-500 mb-1">Sentiment</p>
+                        <div>{renderSentimentType(recording.sentiment_type)}</div>
+                      </div>
+                      
+                      {recording.sentiment_score !== undefined && (
+                        <div className="bg-gray-50 p-4 rounded-md">
+                          <p className="text-sm font-medium text-gray-500 mb-1">Sentiment Score</p>
+                          <div className="text-lg font-semibold">
+                            {recording.sentiment_score.toFixed(2)}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {recording.summary && (
+                      <div className="bg-gray-50 p-4 rounded-md mb-4">
+                        <p className="text-sm font-medium text-gray-500 mb-1">Summary</p>
+                        <p className="text-gray-700">{recording.summary}</p>
+                      </div>
+                    )}
+                    
+                    {recording.topics && recording.topics.length > 0 && (
+                      <div className="bg-gray-50 p-4 rounded-md">
+                        <p className="text-sm font-medium text-gray-500 mb-2">Topics Mentioned</p>
+                        <div className="flex flex-wrap gap-2">
+                          {recording.topics.map((topic: any) => (
+                            <div key={topic.topic} className="bg-blue-100 text-blue-800 px-2 py-1 text-xs rounded-full">
+                              {topic.topic} {topic.confidence && `(${(topic.confidence * 100).toFixed(0)}%)`}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
