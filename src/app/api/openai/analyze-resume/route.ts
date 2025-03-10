@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
 
     console.log(`Analyzing resume against job description (first 50 chars): "${jobDescription.substring(0, 50)}..."`);
 
-    // Construct the prompt for OpenAI
+    // Construct the prompt for OpenAI with the new structure for strengths and gaps
     const prompt = `
     You are an AI assistant specialized in evaluating resumes against job descriptions.
 
@@ -44,9 +44,11 @@ export async function POST(req: NextRequest) {
       - Organisation Impact: ${dimensions[1]}
       - Independence & Score: ${dimensions[2]}
       - Strategic Alignment: ${dimensions[3]}
-      - Skills: ${dimensions[4]}
     3. Provide an overall score (1-100).
     4. Write a brief analysis of the candidate's fit for the role.
+    5. Identify the top 5 strengths of the candidate based on the resume.
+    6. Identify the top 5 development areas or gaps that the candidate should focus on to better fit the role.
+    7. Identify skills that closely match the job requirements.
 
     Format your response as a valid JSON object with the following structure:
     {
@@ -57,11 +59,24 @@ export async function POST(req: NextRequest) {
         "Ownership": { "score": 8, "level": 6, "justification": "..." },
         "OrganisationImpact": { "score": 7, "level": 5, "justification": "..." },
         "Independence": { "score": 9, "level": 7, "justification": "..." },
-        "StrategicAlignment": { "score": 8, "level": 6, "justification": "..." },
-        "Skills": { "score": 8, "level": 6, "justification": "..." }
+        "StrategicAlignment": { "score": 8, "level": 6, "justification": "..." }
       },
       "analysis": "Concise analysis of candidate's fit for the role...",
-      "recommendedSkills": ["Skill 1", "Skill 2", "Skill 3"]
+      "strengths": [
+        "Strong leadership skills demonstrated through managing teams of 10+ engineers",
+        "Experience delivering complex projects on time and within budget",
+        "Excellent communication skills with both technical and non-technical stakeholders",
+        "Proven track record of mentoring junior engineers",
+        "Technical expertise in relevant technologies"
+      ],
+      "developmentAreas": [
+        "Limited experience with cloud infrastructure",
+        "No demonstrated experience with agile methodologies",
+        "Could benefit from more exposure to cross-functional team leadership",
+        "Limited experience with budget management",
+        "No specific examples of strategic planning"
+      ],
+      "skillsMatched": ["Leadership", "Project Management", "Team Mentoring"]
     }
     `;
 

@@ -9,12 +9,10 @@ export interface ResumeEvaluation {
   organizationImpactScore: number;
   independenceScore: number;
   strategicAlignmentScore: number;
-  skillsScore: number;
   ownershipLevel: number;
   organizationImpactLevel: number;
   independenceLevel: number;
   strategicAlignmentLevel: number;
-  skillsLevel: number;
   analysisJson: any;
   selectedForInterview: boolean;
 }
@@ -57,8 +55,7 @@ export const analyzeResume = async (resumeId: string, jobPostingId: string): Pro
       'Ownership',
       'Organisation Impact',
       'Independence & Score',
-      'Strategic Alignment',
-      'Skills'
+      'Strategic Alignment'
     ];
     
     let analysis;
@@ -138,12 +135,10 @@ export const analyzeResume = async (resumeId: string, jobPostingId: string): Pro
         organizationImpactScore: normalizeScore(analysis.dimensions?.OrganisationImpact?.score || 0),
         independenceScore: normalizeScore(analysis.dimensions?.Independence?.score || 0),
         strategicAlignmentScore: normalizeScore(analysis.dimensions?.StrategicAlignment?.score || 0),
-        skillsScore: normalizeScore(analysis.dimensions?.Skills?.score || 0),
         ownershipLevel: analysis.dimensions?.Ownership?.level || 4,
         organizationImpactLevel: analysis.dimensions?.OrganisationImpact?.level || 4,
         independenceLevel: analysis.dimensions?.Independence?.level || 4,
         strategicAlignmentLevel: analysis.dimensions?.StrategicAlignment?.level || 4,
-        skillsLevel: analysis.dimensions?.Skills?.level || 4,
         analysisJson: analysis,
         selectedForInterview: false
       };
@@ -170,12 +165,10 @@ export const analyzeResume = async (resumeId: string, jobPostingId: string): Pro
             organization_impact_score: evaluation.organizationImpactScore,
             independence_score: evaluation.independenceScore,
             strategic_alignment_score: evaluation.strategicAlignmentScore,
-            skills_score: evaluation.skillsScore,
             ownership_level: evaluation.ownershipLevel,
             organization_impact_level: evaluation.organizationImpactLevel,
             independence_level: evaluation.independenceLevel,
             strategic_alignment_level: evaluation.strategicAlignmentLevel,
-            skills_level: evaluation.skillsLevel,
             analysis_json: evaluation.analysisJson,
             selected_for_interview: evaluation.selectedForInterview
           }
@@ -310,13 +303,6 @@ const getDimensionDescription = (dimension: string, level: number): string => {
       6: 'Drive multi-quarter technical strategy',
       7: 'Define and execute multi-year technical roadmap',
       8: 'Shape industry direction through innovative strategies'
-    },
-    'Skills': {
-      4: 'Strong technical mentorship',
-      5: 'Effective cross-team collaboration',
-      6: 'Impactful organizational change management',
-      7: 'Executive-level communication',
-      8: 'Transformational leadership'
     }
   };
   

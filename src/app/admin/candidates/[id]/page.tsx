@@ -12,570 +12,275 @@ import {
   XCircle,
   Clock,
   Star,
-  Mic
+  Mic,
+  Mail
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/supabaseClient';
 import { v4 as uuidv4 } from 'uuid';
+import { format } from 'date-fns';
+import { Suspense } from 'react';
 
 export default function CandidateDetailPage({ params }: { params: { id: string } }) {
-  const evaluationId = params.id;
+  const candidateId = params.id;
   
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Suspense fallback={<LoadingState />}>
+        <CandidateDetailClient candidateId={candidateId} />
+      </Suspense>
+    </div>
+  );
+}
+
+// Client component that handles data fetching and display
+function CandidateDetailClient({ candidateId }: { candidateId: string }) {
   const [loading, setLoading] = useState(true);
-  const [evaluation, setEvaluation] = useState<any | null>(null);
-  const [jobPosting, setJobPosting] = useState<any | null>(null);
-  const [candidate, setCandidate] = useState<any | null>(null);
-  const [candidateName, setCandidateName] = useState<string>('');
-  const [candidateEmail, setCandidateEmail] = useState<string>('');
-  const [generatingLink, setGeneratingLink] = useState(false);
-  const [interviewLink, setInterviewLink] = useState<string | null>(null);
-
+  const [candidate, setCandidate] = useState<any>(null);
+  const [fileName, setFileName] = useState<string>('');
+  
   useEffect(() => {
-    fetchEvaluationDetails();
-  }, [evaluationId]);
-
-  // Update candidate information when data changes
-  useEffect(() => {
-    if (evaluation) {
-      // Try to get name from different sources in priority order
-      let name = '';
-      let email = '';
-      
-      // Priority 1: Use resume.candidate_name if available
-      if (evaluation.resume?.candidate_name) {
-        name = evaluation.resume.candidate_name;
-      } 
-      // Priority 2: Use candidate.name if available
-      else if (candidate?.name) {
-        name = candidate.name;
-      } 
-      // Priority 3: Generate a random name as fallback
-      else {
-        name = 'Candidate ' + evaluation.id.substring(0, 4);
-      }
-      
-      // Same priority for email
-      if (evaluation.resume?.candidate_email) {
-        email = evaluation.resume.candidate_email;
-      } 
-      else if (candidate?.email) {
-        email = candidate.email;
-      } 
-      else {
-        email = name.toLowerCase().replace(' ', '.') + '@example.com';
-      }
-      
-      setCandidateName(name);
-      setCandidateEmail(email);
-    }
-  }, [evaluation, candidate]);
-
-  const fetchEvaluationDetails = async () => {
-    try {
-      setLoading(true);
-      
-      // Fetch the evaluation
-      const { data: evaluationData, error: evaluationError } = await supabase
-        .from('resume_evaluations')
-        .select(`
-          *,
-          resume:resume_id (
-            id,
-            candidate_id,
-            file_url,
-            file_name,
-            file_size,
-            content_text
-          )
-        `)
-        .eq('id', evaluationId)
-        .single();
-      
-      if (evaluationError) throw evaluationError;
-      setEvaluation(evaluationData);
-      
-      if (evaluationData) {
-        // Fetch the job posting
-        const { data: jobData, error: jobError } = await supabase
-          .from('job_postings')
-          .select('*')
-          .eq('id', evaluationData.job_posting_id)
+    const fetchCandidate = async () => {
+      try {
+        setLoading(true);
+        const { data, error } = await supabase
+          .from('resume_evaluations')
+          .select(`
+            *,
+            resume:resume_id (
+              id,
+              file_name,
+              file_url,
+              job_posting_id
+            ),
+            job_posting:job_posting_id (
+              id,
+              title,
+              description
+            )
+          `)
+          .eq('id', candidateId)
           .single();
         
-        if (!jobError) setJobPosting(jobData);
-        
-        // Fetch the candidate
-        if (evaluationData.resume?.candidate_id) {
-          const { data: candidateData, error: candidateError } = await supabase
-            .from('candidates')
-            .select('*')
-            .eq('id', evaluationData.resume.candidate_id)
-            .single();
-          
-          if (!candidateError) {
-            setCandidate(candidateData);
-            
-            // Check if candidate already has an interview session
-            if (candidateData.session_id) {
-              const interviewUrl = `${window.location.origin}/interview/${candidateData.session_id}`;
-              setInterviewLink(interviewUrl);
-            }
-          }
+        if (error) {
+          console.error('Error fetching candidate:', error);
+          return;
         }
+        
+        // Set the filename for display
+        if (data?.resume?.file_name) {
+          setFileName(data.resume.file_name.replace('.pdf', ''));
+        }
+        
+        setCandidate(data);
+      } catch (error) {
+        console.error('Error fetching candidate:', error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching evaluation details:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const generateInterviewLink = async () => {
-    if (!candidate || !evaluation) return;
+    };
     
-    setGeneratingLink(true);
-    
-    try {
-      // Create a new session
-      const sessionId = uuidv4();
-      const { data: sessionData, error: sessionError } = await supabase
-        .from('sessions')
-        .insert([
-          {
-            id: sessionId,
-            candidate_id: candidate.id,
-            job_posting_id: evaluation.job_posting_id,
-            questions: ['q1', 'q2', 'q3'], // Default interview questions
-            progress: 0,
-            is_completed: false
-          }
-        ])
-        .select();
-      
-      if (sessionError) throw sessionError;
-      
-      // Update candidate with session ID
-      await supabase
-        .from('candidates')
-        .update({ session_id: sessionId })
-        .eq('id', candidate.id);
-      
-      // Mark evaluation as selected for interview
-      await supabase
-        .from('resume_evaluations')
-        .update({ selected_for_interview: true })
-        .eq('id', evaluationId);
-      
-      // Generate link
-      const interviewUrl = `${window.location.origin}/interview/${sessionId}`;
-      setInterviewLink(interviewUrl);
-      
-      // Refresh evaluation data
-      fetchEvaluationDetails();
-    } catch (error) {
-      console.error('Error generating interview link:', error);
-      alert('There was an error generating the interview link');
-    } finally {
-      setGeneratingLink(false);
-    }
-  };
-
+    fetchCandidate();
+  }, [candidateId]);
+  
   if (loading) {
-    return (
-      <div className="px-4 py-8">
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-          <span className="ml-2">Loading candidate details...</span>
-        </div>
-      </div>
-    );
+    return <LoadingState />;
   }
-
-  if (!evaluation) {
-    return (
-      <div className="px-4 py-8">
-        <div className="bg-red-50 text-red-700 p-4 rounded-md">
-          <h2 className="font-semibold">Evaluation not found</h2>
-          <p>The evaluation you are looking for could not be found.</p>
-          <Link href="/admin/candidates" className="text-blue-600 hover:underline mt-2 inline-block">
-            Back to Candidates
-          </Link>
-        </div>
-      </div>
-    );
+  
+  if (!candidate) {
+    return <div className="p-8 text-center">Candidate not found</div>;
   }
-
+  
+  // Extract analysis data
+  const analysisJson = candidate.analysis_json || {};
+  
+  // Render the candidate detail page
   return (
-    <div className="px-4 py-8">
-      <div className="mb-6 flex justify-between items-center">
-        <div className="flex items-center">
-          <Link href={`/admin/candidates?job=${evaluation?.job_posting_id}`} className="mr-4 p-2 hover:bg-gray-100 rounded-full">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-          <h1 className="text-2xl font-bold">Candidate Details</h1>
+    <div className="p-6 md:p-8 max-w-screen-xl mx-auto">
+      <Link href="/admin/candidates" className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-6">
+        <ArrowLeft className="w-4 h-4 mr-2" />
+        Back to Candidates
+      </Link>
+      
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">{fileName || 'Unknown Candidate'}</h1>
+          <p className="text-gray-500">
+            Resume uploaded {format(new Date(candidate.created_at), 'MMMM d, yyyy')}
+          </p>
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-1 space-y-6">
-          {/* Candidate Info Card */}
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <div className="flex flex-col items-center mb-6">
-              <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center mb-4">
-                <User className="h-10 w-10 text-gray-500" />
-              </div>
-              <h2 className="text-xl font-semibold">{candidateName}</h2>
-              <p className="text-gray-500">{candidateEmail}</p>
-            </div>
-
-            {evaluation.selected_for_interview ? (
-              <div className="mt-6 p-4 bg-green-50 rounded-md flex items-center">
-                <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                <span className="text-green-700">Invited to interview</span>
-              </div>
+        <div className="mt-4 md:mt-0">
+          <button
+            className={`inline-flex items-center px-4 py-2 rounded-md font-medium text-sm ${
+              candidate.selected_for_interview
+                ? 'bg-green-100 text-green-800'
+                : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
+            onClick={async () => {
+              // Handle inviting to interview logic
+            }}
+          >
+            {candidate.selected_for_interview ? (
+              <>
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Selected for Interview
+              </>
             ) : (
-              <div className="mt-6">
-                <button
-                  onClick={generateInterviewLink}
-                  disabled={generatingLink}
-                  className="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300 flex items-center justify-center"
-                >
-                  {generatingLink ? (
-                    <>
-                      <Loader2 className="animate-spin h-4 w-4 mr-2" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Mic className="h-4 w-4 mr-2" />
-                      Invite to Interview
-                    </>
-                  )}
-                </button>
-              </div>
+              <>
+                <Mail className="w-4 h-4 mr-2" />
+                Invite to Interview
+              </>
             )}
-
-            {interviewLink && (
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Interview Link
-                </label>
-                <div className="flex">
-                  <input
-                    type="text"
-                    readOnly
-                    value={interviewLink}
-                    className="flex-1 min-w-0 block px-3 py-2 rounded-l-md sm:text-sm border border-gray-300"
-                  />
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(interviewLink);
-                      alert('Interview link copied to clipboard!');
-                    }}
-                    className="inline-flex items-center px-4 py-2 border border-l-0 border-gray-300 text-sm font-medium rounded-r-md text-gray-700 bg-gray-50 hover:bg-gray-100"
-                  >
-                    Copy
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Resume Card */}
-          <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-            <h2 className="text-lg font-semibold mb-4 flex items-center">
-              <FileText className="h-5 w-5 text-blue-500 mr-2" />
-              Resume
-            </h2>
-            <div className="mb-4">
-              <a
-                href={evaluation.resume?.file_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-              >
-                View Resume
-              </a>
-            </div>
-            <div className="text-sm text-gray-600">
-              <p>Filename: {evaluation.resume?.file_name || 'Unknown'}</p>
-              <p>Size: {evaluation.resume?.file_size ? `${(evaluation.resume.file_size / 1024 / 1024).toFixed(2)} MB` : 'Unknown'}</p>
-            </div>
-          </div>
-
-          {/* Job Posting Card */}
-          {jobPosting && (
-            <div className="bg-white p-6 rounded-lg shadow-md">
-              <h2 className="text-lg font-semibold mb-4 flex items-center">
-                <FileText className="h-5 w-5 text-blue-500 mr-2" />
-                Job Posting
-              </h2>
-              <div className="text-sm">
-                <h3 className="font-medium text-gray-900">{jobPosting.title}</h3>
-                <p className="text-gray-600">{jobPosting.department || 'No department'}</p>
-                <div className="mt-2">
-                  <h4 className="font-medium text-gray-700">Skills:</h4>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {jobPosting.skills && jobPosting.skills.map((skill: string, i: number) => (
-                      <span key={i} className="bg-gray-200 px-2 py-1 rounded text-xs">
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                {jobPosting.file_url && (
-                  <div className="mt-4">
-                    <a
-                      href={jobPosting.file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-800"
-                    >
-                      View Full Job Description
-                    </a>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          </button>
         </div>
-
-        <div className="md:col-span-2">
-          {/* Overall Score Card */}
-          <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-            <div className="flex items-center mb-4">
-              <BarChart className="h-5 w-5 text-blue-500 mr-2" />
-              <h2 className="text-lg font-semibold">Overall Score</h2>
-            </div>
-            <div className="flex items-end">
-              <div className="text-4xl font-bold text-green-500">
-                {evaluation ? Math.round(evaluation.overall_score) : 0}
+      </header>
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Overall Score Card */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-4">Overall Score</h2>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-3xl font-bold">{candidate.overall_score.toFixed(0)}<span className="text-xl font-normal text-gray-500">/100</span></span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2.5">
+            <div
+              className="bg-blue-600 h-2.5 rounded-full"
+              style={{ width: `${Math.min(Math.max(candidate.overall_score, 0), 100)}%` }}
+            ></div>
+          </div>
+          <p className="mt-4 text-gray-500 text-sm">
+            Evaluated against: <span className="font-medium text-gray-700">{candidate.job_posting?.title || 'Job Position'}</span>
+          </p>
+        </div>
+        
+        {/* Dimension Scores Card */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-4">Dimension Scores</h2>
+          <div className="space-y-4">
+            <div>
+              <div className="flex justify-between mb-1">
+                <span>Ownership <span className="text-xs text-gray-500">L{candidate.ownership_level || 4}</span></span>
+                <span>{candidate.ownership_score.toFixed(1)}/10</span>
               </div>
-              <div className="text-gray-500 ml-2 mb-1">/ 100</div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-blue-600 h-2 rounded-full"
+                  style={{ width: `${Math.min(Math.max(candidate.ownership_score * 10, 0), 100)}%` }}
+                ></div>
+              </div>
             </div>
-            <div className="mt-2 w-full bg-gray-200 rounded-full h-2.5">
-              <div 
-                className="bg-green-500 h-2.5 rounded-full" 
-                style={{ width: `${evaluation ? Math.min(Math.max(evaluation.overall_score, 0), 100) : 0}%` }}
-              ></div>
+            
+            <div>
+              <div className="flex justify-between mb-1">
+                <span>Organization Impact <span className="text-xs text-gray-500">L{candidate.organization_impact_level || 4}</span></span>
+                <span>{candidate.organization_impact_score.toFixed(1)}/10</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-blue-600 h-2 rounded-full"
+                  style={{ width: `${Math.min(Math.max(candidate.organization_impact_score * 10, 0), 100)}%` }}
+                ></div>
+              </div>
+            </div>
+            
+            <div>
+              <div className="flex justify-between mb-1">
+                <span>Independence <span className="text-xs text-gray-500">L{candidate.independence_level || 4}</span></span>
+                <span>{candidate.independence_score.toFixed(1)}/10</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-blue-600 h-2 rounded-full"
+                  style={{ width: `${Math.min(Math.max(candidate.independence_score * 10, 0), 100)}%` }}
+                ></div>
+              </div>
+            </div>
+            
+            <div>
+              <div className="flex justify-between mb-1">
+                <span>Strategic Alignment <span className="text-xs text-gray-500">L{candidate.strategic_alignment_level || 4}</span></span>
+                <span>{candidate.strategic_alignment_score.toFixed(1)}/10</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-blue-600 h-2 rounded-full"
+                  style={{ width: `${Math.min(Math.max(candidate.strategic_alignment_score * 10, 0), 100)}%` }}
+                ></div>
+              </div>
             </div>
           </div>
-
-          {/* Dimension Scores Card */}
-          <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-            <div className="flex items-center mb-4">
-              <Star className="h-5 w-5 text-blue-500 mr-2" />
-              <h2 className="text-lg font-semibold">Dimension Scores</h2>
+        </div>
+        
+        {/* Analysis Details Card */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-4">Analysis Details</h2>
+          
+          <div className="space-y-4">
+            {/* Summary Section */}
+            <div>
+              <h3 className="font-medium mb-2">Summary</h3>
+              <p className="text-gray-700 text-sm">
+                {analysisJson.analysis || 'No summary available'}
+              </p>
             </div>
-            <div className="space-y-6">
-              {evaluation && (
-                <>
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-700">Ownership</span>
-                      <span className="text-sm font-medium text-gray-700">
-                        L{evaluation.ownership_level} ({evaluation.ownership_score.toFixed(1)}/10)
-                      </span>
-                    </div>
-                    <div className="bg-gray-200 h-2.5 rounded-full">
-                      <div 
-                        className="bg-blue-600 h-2.5 rounded-full" 
-                        style={{ width: `${(evaluation.ownership_score / 10) * 100}%` }}
-                      ></div>
-                    </div>
-                    <div className="mt-1 text-xs text-gray-500">
-                      {getDimensionDescription('Ownership', evaluation.ownership_level)}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-700">Organization Impact</span>
-                      <span className="text-sm font-medium text-gray-700">
-                        L{evaluation.organization_impact_level} ({evaluation.organization_impact_score.toFixed(1)}/10)
-                      </span>
-                    </div>
-                    <div className="bg-gray-200 h-2.5 rounded-full">
-                      <div 
-                        className="bg-purple-600 h-2.5 rounded-full" 
-                        style={{ width: `${(evaluation.organization_impact_score / 10) * 100}%` }}
-                      ></div>
-                    </div>
-                    <div className="mt-1 text-xs text-gray-500">
-                      {getDimensionDescription('Organisation Impact', evaluation.organization_impact_level)}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-700">Independence</span>
-                      <span className="text-sm font-medium text-gray-700">
-                        L{evaluation.independence_level} ({evaluation.independence_score.toFixed(1)}/10)
-                      </span>
-                    </div>
-                    <div className="bg-gray-200 h-2.5 rounded-full">
-                      <div 
-                        className="bg-green-600 h-2.5 rounded-full" 
-                        style={{ width: `${(evaluation.independence_score / 10) * 100}%` }}
-                      ></div>
-                    </div>
-                    <div className="mt-1 text-xs text-gray-500">
-                      {getDimensionDescription('Independence & Score', evaluation.independence_level)}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-700">Strategic Alignment</span>
-                      <span className="text-sm font-medium text-gray-700">
-                        L{evaluation.strategic_alignment_level} ({evaluation.strategic_alignment_score.toFixed(1)}/10)
-                      </span>
-                    </div>
-                    <div className="bg-gray-200 h-2.5 rounded-full">
-                      <div 
-                        className="bg-amber-600 h-2.5 rounded-full" 
-                        style={{ width: `${(evaluation.strategic_alignment_score / 10) * 100}%` }}
-                      ></div>
-                    </div>
-                    <div className="mt-1 text-xs text-gray-500">
-                      {getDimensionDescription('Strategic Alignment', evaluation.strategic_alignment_level)}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-700">Skills</span>
-                      <span className="text-sm font-medium text-gray-700">
-                        L{evaluation.skills_level} ({evaluation.skills_score.toFixed(1)}/10)
-                      </span>
-                    </div>
-                    <div className="bg-gray-200 h-2.5 rounded-full">
-                      <div 
-                        className="bg-red-600 h-2.5 rounded-full" 
-                        style={{ width: `${(evaluation.skills_score / 10) * 100}%` }}
-                      ></div>
-                    </div>
-                    <div className="mt-1 text-xs text-gray-500">
-                      {getDimensionDescription('Skills', evaluation.skills_level)}
-                    </div>
-                  </div>
-                </>
+            
+            {/* Strengths Section */}
+            <div>
+              <h3 className="font-medium mb-2">Strengths</h3>
+              {analysisJson.strengths && analysisJson.strengths.length > 0 ? (
+                <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
+                  {analysisJson.strengths.slice(0, 5).map((strength: string, index: number) => (
+                    <li key={index}>{strength}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-gray-500 text-sm">No strengths information available</p>
+              )}
+            </div>
+            
+            {/* Development Areas Section */}
+            <div>
+              <h3 className="font-medium mb-2">Development Areas</h3>
+              {analysisJson.developmentAreas && analysisJson.developmentAreas.length > 0 ? (
+                <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
+                  {analysisJson.developmentAreas.slice(0, 5).map((area: string, index: number) => (
+                    <li key={index}>{area}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-gray-500 text-sm">No development areas information available</p>
               )}
             </div>
           </div>
-
-          {/* Analysis Details Card */}
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h2 className="text-lg font-semibold mb-4">Analysis Details</h2>
-            
-            {evaluation?.analysis_json ? (
-              <div className="space-y-6">
-                {/* Summary */}
-                <div>
-                  <h3 className="text-md font-medium text-gray-700 mb-2">Summary</h3>
-                  <p className="text-gray-600">
-                    {evaluation.analysis_json.summary || evaluation.analysis_json.analysis || 'No summary available'}
-                  </p>
-                </div>
-                
-                {/* Strengths */}
-                <div>
-                  <h3 className="text-md font-medium text-gray-700 mb-2">Strengths</h3>
-                  <ul className="list-disc pl-5 space-y-1">
-                    {evaluation.analysis_json.topStrengths && evaluation.analysis_json.topStrengths.length > 0 ? (
-                      evaluation.analysis_json.topStrengths.map((strength: string, i: number) => (
-                        <li key={i} className="text-gray-600">{strength}</li>
-                      ))
-                    ) : (
-                      <li className="text-gray-600">No strengths information available</li>
-                    )}
-                  </ul>
-                </div>
-                
-                {/* Development Areas */}
-                <div>
-                  <h3 className="text-md font-medium text-gray-700 mb-2">Development Areas</h3>
-                  <ul className="list-disc pl-5 space-y-1">
-                    {evaluation.analysis_json.developmentAreas && evaluation.analysis_json.developmentAreas.length > 0 ? (
-                      evaluation.analysis_json.developmentAreas.map((area: string, i: number) => (
-                        <li key={i} className="text-gray-600">{area}</li>
-                      ))
-                    ) : (
-                      <li className="text-gray-600">No development areas information available</li>
-                    )}
-                  </ul>
-                </div>
-                
-                {/* Skills Matched */}
-                <div>
-                  <h3 className="text-md font-medium text-gray-700 mb-2">Skills Matched</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {evaluation.analysis_json.skillsMatched && evaluation.analysis_json.skillsMatched.length > 0 ? (
-                      evaluation.analysis_json.skillsMatched.map((skill: string, i: number) => (
-                        <span key={i} className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
-                          {skill}
-                        </span>
-                      ))
-                    ) : evaluation.analysis_json.recommendedSkills && evaluation.analysis_json.recommendedSkills.length > 0 ? (
-                      evaluation.analysis_json.recommendedSkills.map((skill: string, i: number) => (
-                        <span key={i} className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
-                          {skill}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-gray-500">No skills information available</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-gray-500 italic">No detailed analysis available</div>
-            )}
-          </div>
+        </div>
+      </div>
+      
+      {/* Resume Preview Card - This is optional and can be implemented if needed */}
+      <div className="mt-6 bg-white rounded-lg shadow p-6">
+        <h2 className="text-lg font-semibold mb-4">Resume Preview</h2>
+        <div className="border rounded-md p-4 flex items-center justify-center min-h-[200px]">
+          {candidate.resume?.file_url ? (
+            <a 
+              href={candidate.resume.file_url} 
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center text-blue-600 hover:text-blue-800"
+            >
+              <FileText className="mr-2 h-5 w-5" />
+              View Resume
+            </a>
+          ) : (
+            <p className="text-gray-500">No resume file available</p>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-// Helper function to get dimension description
-function getDimensionDescription(dimension: string, level: number): string {
-  const descriptions: Record<string, Record<number, string>> = {
-    'Ownership': {
-      4: 'Guide others on how to solve, anticipate, and/or avoid major production or compliance issues',
-      5: 'Contribute to identification and definition of engineering goals for your team',
-      6: 'Contribute to identification and definition of engineering goals across multiple teams',
-      7: 'Lead substantial initiatives that drive measurable results',
-      8: 'Develop and execute a long-term vision and strategy for a significant part of the business'
-    },
-    'Organisation Impact': {
-      4: 'Help other product teams to solve significant technical problems in your area of expertise',
-      5: 'Advise other employees on career direction',
-      6: 'Evaluate senior level hires',
-      7: 'Identify leadership potential within group; hire and develop senior managers, directors, and architects',
-      8: 'Create and steward a culture of diversity, inclusion and belonging, and mentor others in doing so'
-    },
-    'Independence & Score': {
-      4: 'Technical thought leader in your immediate team',
-      5: 'Technical thought leader in multiple teams',
-      6: 'Technical thought leader at the divisional level',
-      7: 'Technical thought leader at the organizational level',
-      8: 'Thought leader on industry-wide challenges and practices'
-    },
-    'Strategic Alignment': {
-      4: 'Align work to support quarterly goals',
-      5: 'Ensure technical solutions align with annual objectives',
-      6: 'Drive multi-quarter technical strategy',
-      7: 'Define and execute multi-year technical roadmap',
-      8: 'Shape industry direction through innovative strategies'
-    },
-    'Skills': {
-      4: 'Strong technical mentorship',
-      5: 'Effective cross-team collaboration',
-      6: 'Impactful organizational change management',
-      7: 'Executive-level communication',
-      8: 'Transformational leadership'
-    }
-  };
-  
-  return descriptions[dimension]?.[level] || `Level ${level}`;
+function LoadingState() {
+  return (
+    <div className="p-8 flex justify-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700"></div>
+    </div>
+  );
 } 
