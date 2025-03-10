@@ -363,75 +363,90 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
         else if (candidate?.resume?.id) {
           console.log('Trying to find candidate via resume_id:', candidate.resume.id);
           
-          // Find the candidate_id that might be linked to this resume
-          const { data: candidateData, error: candidateError } = await supabase
+          // Find ALL candidates that might be linked to this resume (not using maybeSingle)
+          const { data: candidatesData, error: candidatesError } = await supabase
             .from('candidates')
             .select('id')
-            .eq('resume_id', candidate.resume.id)
-            .maybeSingle();
+            .eq('resume_id', candidate.resume.id);
           
-          if (candidateError) {
-            console.error('Error finding candidate from resume:', candidateError);
-            setLoadingRecordings(false);
-            return;
+          if (candidatesError) {
+            console.error('Error finding candidates from resume:', candidatesError);
+          } else if (candidatesData && candidatesData.length > 0) {
+            // Get all candidate IDs
+            const candidateIds = candidatesData.map(c => c.id);
+            console.log(`Found ${candidateIds.length} candidate IDs via resume:`, candidateIds);
+            
+            // Get recordings for ANY of these candidate IDs
+            const { data: recordingsData, error: recordingsError } = await supabase
+              .from('recordings')
+              .select('*')
+              .in('candidate_id', candidateIds)
+              .order('created_at', { ascending: true });
+            
+            if (recordingsError) {
+              console.error('Error fetching recordings:', recordingsError);
+            } else if (recordingsData && recordingsData.length > 0) {
+              console.log('Found recordings via resume relationship:', recordingsData.length);
+              setRecordings(recordingsData);
+              // We found recordings, so we can skip the name-based search
+              await fetchQuestionsForRecordings(recordingsData);
+              return;
+            }
           }
           
-          if (!candidateData?.id) {
-            console.log('No candidate found linked to this resume');
-            setLoadingRecordings(false);
-            return;
+          // If we get here, we didn't find recordings via direct ID or resume relationship
+          // Let's try one more approach - check if there are recordings with a matching candidate name
+          console.log('Trying third approach: Looking for recordings by candidate name');
+          
+          // First, get the candidate name from the resume or filename
+          const candidateName = fileName || 
+                               candidate.candidate_name || 
+                               (candidate.resume?.file_name ? candidate.resume.file_name.replace('.pdf', '') : null);
+          
+          if (candidateName) {
+            console.log('Searching for recordings with candidate name:', candidateName);
+            
+            // Get all recordings
+            const { data: allRecordings, error: allError } = await supabase
+              .from('recordings')
+              .select(`
+                *,
+                candidates:candidate_id(name)
+              `)
+              .order('created_at', { ascending: true });
+            
+            if (allError) {
+              console.error('Error fetching all recordings:', allError);
+            } else if (allRecordings && allRecordings.length > 0) {
+              // Filter recordings by candidate name (case insensitive)
+              const nameMatches = allRecordings.filter(r => {
+                const recordingCandidateName = r.candidates?.name?.toLowerCase();
+                const searchName = candidateName.toLowerCase();
+                
+                // Check if the recording's candidate name contains our search name or vice versa
+                return recordingCandidateName?.includes(searchName) || 
+                       searchName.includes(recordingCandidateName || '');
+              });
+              
+              if (nameMatches.length > 0) {
+                console.log('Found recordings by candidate name match:', nameMatches.length);
+                setRecordings(nameMatches);
+                await fetchQuestionsForRecordings(nameMatches);
+                return;
+              }
+            }
           }
           
-          console.log('Found candidate ID via resume:', candidateData.id);
-          
-          // Get recordings for this resolved candidate
-          const { data: recordingsData, error: recordingsError } = await supabase
-            .from('recordings')
-            .select('*')
-            .eq('candidate_id', candidateData.id)
-            .order('created_at', { ascending: true });
-          
-          if (recordingsError) {
-            console.error('Error fetching recordings:', recordingsError);
-            setLoadingRecordings(false);
-            return;
-          }
-          
-          console.log('Found recordings via resume relationship:', recordingsData?.length || 0);
-          setRecordings(recordingsData || []);
+          console.log('No recordings found through any method');
+          setRecordings([]);
         } else {
           console.log('No resume ID and no direct recordings found');
           setRecordings([]);
         }
         
-        // Fetch questions for all recordings
-        const allRecordings = directRecordings?.length ? directRecordings : recordings;
-        const questionIds = allRecordings?.map(r => r.question_id) || [];
-        
-        if (questionIds.length > 0) {
-          // Get unique question IDs
-          const uniqueQuestionIds = questionIds.filter((id, index) => 
-            questionIds.indexOf(id) === index
-          );
-          
-          console.log('Fetching details for questions:', uniqueQuestionIds);
-          
-          const { data: questionsData, error: questionsError } = await supabase
-            .from('questions')
-            .select('*')
-            .in('id', uniqueQuestionIds);
-          
-          if (questionsError) {
-            console.error('Error fetching questions:', questionsError);
-          } else {
-            // Convert to a map for easy lookup
-            const questionsMap: Record<string, any> = {};
-            questionsData?.forEach(q => {
-              questionsMap[q.id] = q;
-            });
-            console.log('Questions map created:', Object.keys(questionsMap).length);
-            setQuestions(questionsMap);
-          }
+        // If we have recordings (from any source), fetch the questions
+        if (directRecordings && directRecordings.length > 0) {
+          await fetchQuestionsForRecordings(directRecordings);
         }
       } catch (err) {
         console.error('Error loading recordings:', err);
@@ -440,11 +455,42 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
       }
     };
     
+    // Helper function to fetch questions for a set of recordings
+    const fetchQuestionsForRecordings = async (recordingsData: any[]) => {
+      const questionIds = recordingsData?.map(r => r.question_id) || [];
+      
+      if (questionIds.length > 0) {
+        // Get unique question IDs
+        const uniqueQuestionIds = questionIds.filter((id, index) => 
+          questionIds.indexOf(id) === index
+        );
+        
+        console.log('Fetching details for questions:', uniqueQuestionIds);
+        
+        const { data: questionsData, error: questionsError } = await supabase
+          .from('questions')
+          .select('*')
+          .in('id', uniqueQuestionIds);
+        
+        if (questionsError) {
+          console.error('Error fetching questions:', questionsError);
+        } else {
+          // Convert to a map for easy lookup
+          const questionsMap: Record<string, any> = {};
+          questionsData?.forEach(q => {
+            questionsMap[q.id] = q;
+          });
+          console.log('Questions map created:', Object.keys(questionsMap).length);
+          setQuestions(questionsMap);
+        }
+      }
+    };
+    
     // Only fetch recordings when candidateId is available
     if (candidateId) {
       fetchRecordings();
     }
-  }, [candidateId, candidate]);
+  }, [candidateId, candidate, fileName]);
   
   // Helper function to render sentiment type with icon
   const renderSentimentType = (type: string | undefined) => {
@@ -737,6 +783,11 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
         ) : recordings.length === 0 ? (
           <div className="bg-white rounded-lg shadow p-6">
             <p className="text-gray-500">No interview recordings available for this candidate.</p>
+            <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+              <p className="text-yellow-800">
+                <strong>Note:</strong> Recordings may exist in a different candidate record. Check the Admin Dashboard for recordings from {fileName || 'this candidate'}.
+              </p>
+            </div>
           </div>
         ) : (
           <div className="space-y-6">
