@@ -156,14 +156,24 @@ const analyzeResumeWithFile = async (
  * - Dimension scores: 0-10
  */
 const normalizeResumeAnalysisScores = (data: any) => {
+  // If data has analysis property, use it
+  const analysisData = data.analysis || data;
+  
   // Normalize overall score to be between 0-100
-  const normalizedOverallScore = Math.min(Math.max(data.overallScore, 0), 100);
+  const normalizedOverallScore = Math.min(Math.max(analysisData.overallScore || 50, 0), 100);
   
   // Create a normalized copy of the data
   const normalizedData = {
-    ...data,
+    ...analysisData,
     overallScore: normalizedOverallScore,
-    dimensions: { ...data.dimensions }
+    dimensions: analysisData.dimensions || {},
+    // Ensure analysis object exists with all required fields
+    analysis: {
+      summary: analysisData.analysis?.summary || "No summary available",
+      strengths: analysisData.analysis?.strengths || [],
+      developmentAreas: analysisData.analysis?.developmentAreas || [],
+      matchedSkills: analysisData.analysis?.matchedSkills || []
+    }
   };
   
   // Normalize dimension scores to be between 0-10

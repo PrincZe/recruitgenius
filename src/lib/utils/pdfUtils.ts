@@ -10,8 +10,9 @@ import * as pdfjs from 'pdfjs-dist';
 // Only configure PDF.js in browser environments
 if (typeof window !== 'undefined') {
   try {
-    // Configure to use fake worker in browser
-    pdfjs.GlobalWorkerOptions.workerSrc = '';
+    // Configure worker source for PDF.js
+    // Use CDN for the worker source
+    pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
     console.log("PDF.js worker configured in browser environment");
   } catch (err) {
     console.error("Error configuring PDF.js worker:", err);

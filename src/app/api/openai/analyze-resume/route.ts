@@ -215,6 +215,15 @@ Ensure the JSON is valid and properly formatted.
 
   return NextResponse.json({
     success: true,
-    analysis: analysisData
+    analysis: {
+      ...analysisData,
+      // Ensure the analysis object has the expected structure
+      analysis: analysisData.analysis || {
+        summary: "No summary available",
+        strengths: [],
+        developmentAreas: [],
+        matchedSkills: []
+      }
+    }
   });
 } 

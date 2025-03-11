@@ -821,36 +821,52 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <h3 className="font-medium mb-2">Summary</h3>
               <p className="text-gray-700 text-sm">
-                {analysisJson.analysis || 'No summary available'}
+                {analysisJson?.analysis?.summary || 'No summary available'}
               </p>
             </div>
             
             {/* Strengths Section */}
             <div>
               <h3 className="font-medium mb-2">Strengths</h3>
-              {analysisJson.strengths && analysisJson.strengths.length > 0 ? (
-                <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
-                  {analysisJson.strengths.slice(0, 5).map((strength: string, index: number) => (
+              <ul className="list-disc pl-5 text-gray-700 text-sm">
+                {analysisJson?.analysis?.strengths ? (
+                  analysisJson.analysis.strengths.map((strength: string, index: number) => (
                     <li key={index}>{strength}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-gray-500 text-sm">No strengths information available</p>
-              )}
+                  ))
+                ) : (
+                  <li>No strengths data available</li>
+                )}
+              </ul>
             </div>
             
             {/* Development Areas Section */}
             <div>
               <h3 className="font-medium mb-2">Development Areas</h3>
-              {analysisJson.developmentAreas && analysisJson.developmentAreas.length > 0 ? (
-                <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
-                  {analysisJson.developmentAreas.slice(0, 5).map((area: string, index: number) => (
+              <ul className="list-disc pl-5 text-gray-700 text-sm">
+                {analysisJson?.analysis?.developmentAreas ? (
+                  analysisJson.analysis.developmentAreas.map((area: string, index: number) => (
                     <li key={index}>{area}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-gray-500 text-sm">No development areas information available</p>
-              )}
+                  ))
+                ) : (
+                  <li>No development areas data available</li>
+                )}
+              </ul>
+            </div>
+            
+            {/* Matched Skills Section */}
+            <div>
+              <h3 className="font-medium mb-2">Matched Skills</h3>
+              <div className="flex flex-wrap gap-2">
+                {analysisJson?.analysis?.matchedSkills ? (
+                  analysisJson.analysis.matchedSkills.map((skill: string, index: number) => (
+                    <span key={index} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                      {skill}
+                    </span>
+                  ))
+                ) : (
+                  <span>No matched skills data available</span>
+                )}
+              </div>
             </div>
           </div>
         </div>
