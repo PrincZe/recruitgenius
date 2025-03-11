@@ -47,6 +47,9 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
   const [processingRecordings, setProcessingRecordings] = useState<Record<string, boolean>>({});
   const [processingSuccess, setProcessingSuccess] = useState<Record<string, boolean>>({});
   const [processingErrors, setProcessingErrors] = useState<Record<string, string>>({});
+  const [scanningResume, setScanningResume] = useState(false);
+  const [scanSuccess, setScanSuccess] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
   
   useEffect(() => {
     const fetchCandidate = async () => {
@@ -564,6 +567,46 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
     });
   };
   
+  // Function to re-analyze the resume
+  const handleScanResume = async () => {
+    if (!candidate?.resume?.id || !candidate?.job_posting_id) {
+      setScanError('Cannot scan: Missing resume ID or job posting ID');
+      return;
+    }
+
+    setScanningResume(true);
+    setScanSuccess(false);
+    setScanError(null);
+
+    try {
+      const response = await fetch('/api/openai/analyze-resume/rescan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          resumeId: candidate.resume.id,
+          jobPostingId: candidate.job_posting_id,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to scan resume');
+      }
+
+      // Success! Refresh the page to show updated analysis
+      setScanSuccess(true);
+      window.location.reload();
+    } catch (error: any) {
+      console.error('Error scanning resume:', error);
+      setScanError(error.message || 'Failed to scan resume');
+    } finally {
+      setScanningResume(false);
+    }
+  };
+  
   if (loading) {
     return <LoadingState />;
   }
@@ -815,9 +858,48 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
       
       {/* Resume Preview Card - This is optional and can be implemented if needed */}
       <div className="mt-6 bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-semibold mb-4">Resume Preview</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Resume Preview</h2>
+          
+          {candidate?.resume?.id && (
+            <button
+              onClick={handleScanResume}
+              disabled={scanningResume}
+              className={`px-4 py-2 rounded-md text-white ${
+                scanningResume 
+                  ? 'bg-gray-400 cursor-not-allowed' 
+                  : 'bg-blue-600 hover:bg-blue-700'
+              }`}
+            >
+              {scanningResume ? (
+                <span className="flex items-center">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Scanning...
+                </span>
+              ) : (
+                <span className="flex items-center">
+                  <FileText className="h-4 w-4 mr-2" />
+                  Scan Resume
+                </span>
+              )}
+            </button>
+          )}
+        </div>
+        
+        {scanError && (
+          <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-md">
+            <p className="text-sm font-medium">Error: {scanError}</p>
+          </div>
+        )}
+        
+        {scanSuccess && (
+          <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-md">
+            <p className="text-sm font-medium">Resume successfully scanned and analyzed!</p>
+          </div>
+        )}
+        
         <div className="border rounded-md p-4 flex items-center justify-center min-h-[200px]">
-          {candidate.resume?.file_url ? (
+          {candidate?.resume?.file_url ? (
             <a 
               href={candidate.resume.file_url} 
               target="_blank"

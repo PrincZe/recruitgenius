@@ -2,16 +2,22 @@
  * PDF utility functions
  * 
  * This file contains utilities for working with PDF files, including text extraction.
- * In a production application, you would use a library like pdf.js to extract text directly.
- * For simplicity in this demo, we're using a placeholder approach.
+ * Uses PDF.js to extract actual text content from uploaded PDF files.
  */
+
+import * as pdfjs from 'pdfjs-dist';
+import { getDocument, PDFDocumentProxy } from 'pdfjs-dist';
+
+// Set the worker source path
+// In a production environment, consider hosting this worker file yourself
+const PDFJS_WORKER_URL = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
 
 /**
  * Extract text from a PDF file
  * 
- * This function creates a structured metadata object from the PDF filename.
- * For security and reliability, we avoid attempting to read binary PDF content directly
- * and instead send structured metadata to OpenAI for analysis.
+ * This function extracts the actual text content from a PDF file using PDF.js.
+ * It handles arrayBuffer conversion, page iteration, and text content extraction.
  */
 export const extractTextFromPdf = async (file: File): Promise<string> => {
   try {
@@ -20,19 +26,41 @@ export const extractTextFromPdf = async (file: File): Promise<string> => {
       console.error('File object is null or undefined');
       return 'Error: Invalid file object';
     }
+
+    console.log(`Processing PDF file: ${file.name}, size: ${file.size} bytes`);
     
-    // Get the filename for metadata extraction
-    const fileName = file.name || (file as any).originalName || 'unknown-file.pdf';
-    console.log('Extracting metadata from PDF filename:', fileName);
+    // Convert file to ArrayBuffer for PDF.js
+    const arrayBuffer = await file.arrayBuffer();
     
-    // Extract name from filename (e.g., "John_Smith.pdf" -> "John Smith")
+    // Load the PDF document using PDF.js
+    const loadingTask = getDocument({ data: arrayBuffer });
+    const pdf = await loadingTask.promise;
+    
+    console.log(`PDF loaded successfully with ${pdf.numPages} pages`);
+    
+    // Extract text from all pages
+    let fullText = '';
+    
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items
+        .map((item: any) => item.str)
+        .join(' ');
+      
+      fullText += pageText + '\n\n';
+    }
+    
+    console.log(`Extracted ${fullText.length} characters of text from PDF`);
+    
+    // Extract candidate name from filename as fallback if text extraction fails
     let candidateName = '';
     try {
-      candidateName = fileName.replace('.pdf', '')
-                          .replace(/[_-]/g, ' ')
-                          .replace(/\d/g, ' ')  // Replace numbers with spaces
-                          .replace(/\s+/g, ' ') // Replace multiple spaces with single space
-                          .trim();
+      candidateName = file.name.replace('.pdf', '')
+                        .replace(/[_-]/g, ' ')
+                        .replace(/\d/g, ' ')
+                        .replace(/\s+/g, ' ')
+                        .trim();
       
       // If candidateName is in ALL CAPS, convert to Title Case
       if (candidateName === candidateName.toUpperCase()) {
@@ -40,53 +68,46 @@ export const extractTextFromPdf = async (file: File): Promise<string> => {
           .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
           .join(' ');
       }
-      
-      console.log('Extracted candidate name from filename:', candidateName);
     } catch (nameError) {
       console.warn('Could not extract name from filename:', nameError);
       candidateName = 'Candidate';
     }
     
-    // Generate an email from the name
-    const candidateEmail = candidateName 
-      ? candidateName.toLowerCase().replace(/\s+/g, '.') + '@example.com'
-      : 'candidate@example.com';
-    
-    // Create a structured format with metadata for the AI to analyze
-    const fileSize = file.size ? `${Math.round(file.size / 1024)} KB` : 'Unknown size';
-    const metadata = {
-      fileInfo: {
-        filename: fileName,
-        size: fileSize,
-        type: file.type || 'application/pdf',
-        lastModified: file.lastModified ? new Date(file.lastModified).toISOString() : 'Unknown date'
-      },
-      candidateInfo: {
-        name: candidateName,
-        email: candidateEmail,
-      }
-    };
-    
-    // Return structured metadata with placeholder content tags for OpenAI to recognize
-    return `
-# RESUME METADATA
+    // If text extraction failed or returned very little text, use metadata approach as fallback
+    if (fullText.length < 50) {
+      console.warn('PDF text extraction yielded insufficient text. Using fallback approach.');
+      
+      // Generate an email from the name (fallback)
+      const candidateEmail = candidateName 
+        ? candidateName.toLowerCase().replace(/\s+/g, '.') + '@example.com'
+        : 'candidate@example.com';
+      
+      return `
+# RESUME METADATA (FALLBACK - PDF TEXT EXTRACTION FAILED)
 Candidate Name: ${candidateName}
 Candidate Email: ${candidateEmail}
-Filename: ${fileName}
-File Size: ${fileSize}
+Filename: ${file.name}
+File Size: ${Math.round(file.size / 1024)} KB
 
-# INSTRUCTIONS FOR AI ANALYSIS
-This resume belongs to ${candidateName}. Please analyze this resume against the job description.
-Note that the actual resume content isn't included here due to PDF parsing limitations.
-Instead, please use the candidate's name and the job description to simulate a reasonable analysis.
-Generate realistic scores based on the job requirements and the level of position.
+# WARNING: ACTUAL PDF TEXT EXTRACTION FAILED
+The system was unable to extract sufficient text from this PDF. 
+This may be due to the PDF being scanned, image-based, or having security restrictions.
+      `;
+    }
+    
+    // Return the actual extracted text with some metadata
+    return `
+# RESUME TEXT FOR ${candidateName}
+Filename: ${file.name}
+File Size: ${Math.round(file.size / 1024)} KB
+Pages: ${pdf.numPages}
 
-# METADATA JSON
-${JSON.stringify(metadata, null, 2)}
+# EXTRACTED TEXT CONTENT
+${fullText}
     `;
   } catch (error) {
-    console.error('Error extracting metadata from PDF:', error);
-    return 'Error extracting metadata from PDF. Please try again.';
+    console.error('Error extracting text from PDF:', error);
+    return `Error extracting text from PDF: ${error instanceof Error ? error.message : String(error)}. Please try again.`;
   }
 };
 
@@ -94,7 +115,34 @@ ${JSON.stringify(metadata, null, 2)}
  * Convert PDF to an image for preview
  */
 export const generatePdfPreview = async (file: File): Promise<string> => {
-  // In a real application, you would use pdf.js to render the first page as an image
-  // For this demo, we'll return a placeholder image
-  return '/pdf-placeholder.svg';
+  try {
+    // Convert file to ArrayBuffer for PDF.js
+    const arrayBuffer = await file.arrayBuffer();
+    
+    // Load the PDF document using PDF.js
+    const loadingTask = getDocument({ data: arrayBuffer });
+    const pdf = await loadingTask.promise;
+    
+    // Get the first page
+    const page = await pdf.getPage(1);
+    
+    // Create a canvas to render the page
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    
+    // Set the dimensions
+    const viewport = page.getViewport({ scale: 0.5 }); // Scale to make it smaller
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    
+    // Render the page to the canvas
+    await page.render({ canvasContext: context as any, viewport }).promise;
+    
+    // Convert the canvas to a data URL
+    return canvas.toDataURL('image/png');
+  } catch (error) {
+    console.error('Error generating PDF preview:', error);
+    // Return a placeholder image on error
+    return '/pdf-placeholder.svg';
+  }
 }; 

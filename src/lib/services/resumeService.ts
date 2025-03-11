@@ -1,6 +1,15 @@
 import { supabase } from '@/lib/supabase/supabaseClient';
 import { v4 as uuidv4 } from 'uuid';
 
+/**
+ * Result type for resume analysis operations
+ */
+export interface AnalysisResult {
+  success: boolean;
+  data?: any;
+  error?: string;
+}
+
 export interface ResumeEvaluation {
   resumeId: string;
   jobPostingId: string;
@@ -19,177 +28,176 @@ export interface ResumeEvaluation {
 
 /**
  * Analyze a resume against a job posting
+ * Can accept either a File object and job description string (client-side)
+ * or resumeId and jobPostingId (server-side from database)
  */
-export const analyzeResume = async (resumeId: string, jobPostingId: string): Promise<ResumeEvaluation | null> => {
+export const analyzeResume = async (
+  fileOrResumeId: File | string,
+  jobDescriptionOrJobId: string
+): Promise<AnalysisResult> => {
   try {
-    console.log(`Analyzing resume ${resumeId} for job ${jobPostingId}`);
-    
-    // 1. Get resume and job posting
-    const { data: resume, error: resumeError } = await supabase
-      .from('resumes')
-      .select('*')
-      .eq('id', resumeId)
-      .single();
-    
-    if (resumeError) {
-      console.error('Error fetching resume:', resumeError);
-      return null;
-    }
-    
-    const { data: jobPosting, error: jobPostingError } = await supabase
-      .from('job_postings')
-      .select('*')
-      .eq('id', jobPostingId)
-      .single();
-    
-    if (jobPostingError) {
-      console.error('Error fetching job posting:', jobPostingError);
-      return null;
-    }
-    
-    // 2. Extract text from resume PDF (placeholder - in a real app, use PDF.js or similar)
-    const resumeText = resume.content_text || "Could not extract text from the resume";
-    
-    // 3. Analyze with OpenAI API
-    const dimensions = [
-      'Ownership',
-      'Organisation Impact',
-      'Independence & Score',
-      'Strategic Alignment'
-    ];
-    
-    let analysis;
-    try {
-      // Call OpenAI analyze-resume endpoint
-      const response = await fetch('/api/openai/analyze-resume', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          resumeText,
-          jobDescription: jobPosting.description || "Engineering manager position",
-          dimensions
-        }),
-      });
+    // Check if we're dealing with a File object or a resumeId
+    if (typeof fileOrResumeId === 'string') {
+      // Handle the old method (resumeId and jobPostingId)
+      const resumeId = fileOrResumeId;
+      const jobPostingId = jobDescriptionOrJobId;
       
-      if (!response.ok) {
-        console.error('Error from OpenAI service:', await response.text());
-        throw new Error('Failed to analyze resume with OpenAI');
+      console.log(`Analyzing resume ${resumeId} for job ${jobPostingId}`);
+      
+      // Get resume and job posting
+      const { data: resume, error: resumeError } = await supabase
+        .from('resumes')
+        .select('*')
+        .eq('id', resumeId)
+        .single();
+      
+      if (resumeError) {
+        console.error('Error fetching resume:', resumeError);
+        return {
+          success: false,
+          error: `Failed to fetch resume: ${resumeError.message}`,
+        };
       }
       
-      const data = await response.json();
-      analysis = data.analysis;
+      const { data: jobPosting, error: jobPostingError } = await supabase
+        .from('job_postings')
+        .select('*')
+        .eq('id', jobPostingId)
+        .single();
       
-      // Extract candidate name and email if available
-      let candidateName = '';
-      let candidateEmail = '';
-      
-      if (analysis && analysis.candidateName) {
-        candidateName = analysis.candidateName;
+      if (jobPostingError) {
+        console.error('Error fetching job posting:', jobPostingError);
+        return {
+          success: false,
+          error: `Failed to fetch job posting: ${jobPostingError.message}`,
+        };
       }
       
-      if (analysis && analysis.candidateEmail) {
-        candidateEmail = analysis.candidateEmail;
-      }
-      
-      // We don't update the resume record with name/email anymore as those columns don't exist
-      // Instead, we'll store this information in the analysis JSON
-      
-      // Normalize the overallScore to be between 0-100%
-      const normalizedScore = analysis.overallScore || 0;
-      const calculatedScore = typeof normalizedScore === 'number' ? 
-                              Math.min(Math.max(normalizedScore, 0), 100) : 0;
-      
-      // Normalize dimension scores to 0-10 scale
-      const normalizeScore = (score: number | undefined) => {
-        if (typeof score !== 'number' || isNaN(score)) return 0;
+      // Fetch the file from storage URL
+      try {
+        // Create a dummy file object using the file_url
+        // We need to download the file from Supabase storage
+        const fileUrl = resume.file_url;
+        const fileName = resume.file_name || 'resume.pdf';
         
-        // If score is already between 0-10, use it as is
-        if (score >= 0 && score <= 10) return score;
+        const response = await fetch(fileUrl);
+        const blob = await response.blob();
+        const file = new File([blob], fileName, { type: 'application/pdf' });
         
-        // If score is between 0-5, multiply by 2 to get 0-10 scale
-        if (score >= 0 && score <= 5) return score * 2;
-        
-        // If score is between 0-100, divide by 10 to get 0-10 scale
-        if (score >= 0 && score <= 100) return score / 10;
-        
-        // Default fallback
-        return Math.min(Math.max(score, 0), 10);
-      };
-      
-      // Store the candidate info in the analysis JSON
-      if (!analysis.candidateInfo) {
-        analysis.candidateInfo = {};
+        // Now call the analyze function with the file and job description
+        return await analyzeResumeWithFile(file, jobPosting.description || "Engineering manager position");
+      } catch (fileError) {
+        console.error('Error fetching file from storage:', fileError);
+        return {
+          success: false,
+          error: `Failed to fetch file from storage: ${fileError instanceof Error ? fileError.message : String(fileError)}`,
+        };
       }
-      analysis.candidateInfo.name = candidateName;
-      analysis.candidateInfo.email = candidateEmail;
-      
-      // Create the evaluation object
-      const evaluationData: Omit<ResumeEvaluation, 'id'> = {
-        resumeId,
-        jobPostingId,
-        // Ensure score is between 0-100
-        overallScore: calculatedScore,
-        ownershipScore: normalizeScore(analysis.dimensions?.Ownership?.score || 0),
-        organizationImpactScore: normalizeScore(analysis.dimensions?.OrganisationImpact?.score || 0),
-        independenceScore: normalizeScore(analysis.dimensions?.Independence?.score || 0),
-        strategicAlignmentScore: normalizeScore(analysis.dimensions?.StrategicAlignment?.score || 0),
-        ownershipLevel: analysis.dimensions?.Ownership?.level || 4,
-        organizationImpactLevel: analysis.dimensions?.OrganisationImpact?.level || 4,
-        independenceLevel: analysis.dimensions?.Independence?.level || 4,
-        strategicAlignmentLevel: analysis.dimensions?.StrategicAlignment?.level || 4,
-        analysisJson: analysis,
-        selectedForInterview: false
-      };
-      
-      // 4. Create evaluation record
-      const evaluationId = uuidv4();
-      
-      // Add the ID to create the complete evaluation
-      const evaluation = {
-        ...evaluationData,
-        id: evaluationId
-      };
-      
-      // 5. Save to database
-      const { data: savedEvaluation, error: saveError } = await supabase
-        .from('resume_evaluations')
-        .insert([
-          {
-            id: evaluationId,
-            resume_id: resumeId,
-            job_posting_id: jobPostingId,
-            overall_score: evaluation.overallScore,
-            ownership_score: evaluation.ownershipScore,
-            organization_impact_score: evaluation.organizationImpactScore,
-            independence_score: evaluation.independenceScore,
-            strategic_alignment_score: evaluation.strategicAlignmentScore,
-            ownership_level: evaluation.ownershipLevel,
-            organization_impact_level: evaluation.organizationImpactLevel,
-            independence_level: evaluation.independenceLevel,
-            strategic_alignment_level: evaluation.strategicAlignmentLevel,
-            analysis_json: evaluation.analysisJson,
-            selected_for_interview: evaluation.selectedForInterview
-          }
-        ])
-        .select();
-      
-      if (saveError) {
-        console.error('Error saving evaluation:', saveError);
-        return null;
-      }
-      
-      // 6. Return the evaluation
-      return evaluation;
-    } catch (error) {
-      console.error('Error analyzing resume:', error);
-      return null;
+    } else {
+      // Handle the new method (file and jobDescription)
+      return await analyzeResumeWithFile(fileOrResumeId, jobDescriptionOrJobId);
     }
   } catch (error) {
     console.error('Error analyzing resume:', error);
-    return null;
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
+};
+
+/**
+ * Helper function to analyze a resume file with OpenAI
+ */
+const analyzeResumeWithFile = async (
+  file: File,
+  jobDescription: string
+): Promise<AnalysisResult> => {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('jobDescription', jobDescription);
+
+    console.log('Sending resume for analysis:', file.name);
+
+    const response = await fetch('/api/openai/analyze-resume', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(
+        `Failed to analyze resume: ${errorData.error || response.statusText}`
+      );
+    }
+
+    const data = await response.json();
+    
+    // Normalize the scores to ensure they're in the expected ranges
+    const normalizedData = normalizeResumeAnalysisScores(data);
+    
+    return {
+      success: true,
+      data: normalizedData,
+    };
+  } catch (error) {
+    console.error('Error analyzing resume with file:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+};
+
+/**
+ * Normalizes scores from the resume analysis to ensure they're in the expected ranges:
+ * - Overall score: 0-100
+ * - Dimension scores: 0-10
+ */
+const normalizeResumeAnalysisScores = (data: any) => {
+  // Normalize overall score to be between 0-100
+  const normalizedOverallScore = Math.min(Math.max(data.overallScore, 0), 100);
+  
+  // Create a normalized copy of the data
+  const normalizedData = {
+    ...data,
+    overallScore: normalizedOverallScore,
+    dimensions: { ...data.dimensions }
+  };
+  
+  // Normalize dimension scores to be between 0-10
+  for (const dimension in normalizedData.dimensions) {
+    if (normalizedData.dimensions[dimension]) {
+      const rawScore = normalizedData.dimensions[dimension].score;
+      normalizedData.dimensions[dimension].score = normalizeScore(rawScore);
+    }
+  }
+  
+  return normalizedData;
+};
+
+/**
+ * Normalizes a score to be between 0-10
+ */
+const normalizeScore = (score: number): number => {
+  // If score is already between 0-10, return as is
+  if (score >= 0 && score <= 10) {
+    return score;
+  }
+  
+  // If score is between 0-5, scale to 0-10
+  if (score >= 0 && score <= 5) {
+    return score * 2;
+  }
+  
+  // If score is between 0-100, scale to 0-10
+  if (score >= 0 && score <= 100) {
+    return score / 10;
+  }
+  
+  // Fallback: clamp between 0-10
+  return Math.min(Math.max(score, 0), 10);
 };
 
 /**
