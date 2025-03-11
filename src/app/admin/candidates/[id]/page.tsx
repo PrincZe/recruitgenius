@@ -398,64 +398,8 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
           }
           
           // If we get here, we didn't find recordings via direct ID or resume relationship
-          // Let's try one more approach - check if there are recordings with a matching candidate name
-          console.log('Trying third approach: Looking for recordings by candidate name');
-          
-          // First, get the candidate name from the resume or filename
-          const candidateName = fileName || 
-                               candidate.candidate_name || 
-                               (candidate.resume?.file_name ? candidate.resume.file_name.replace('.pdf', '') : null);
-          
-          if (candidateName) {
-            console.log('Searching for recordings with candidate name:', candidateName);
-            
-            // Get all recordings
-            const { data: allRecordings, error: allError } = await supabase
-              .from('recordings')
-              .select(`
-                *,
-                candidates:candidate_id(name)
-              `)
-              .order('created_at', { ascending: true });
-            
-            if (allError) {
-              console.error('Error fetching all recordings:', allError);
-            } else if (allRecordings && allRecordings.length > 0) {
-              // Filter recordings by candidate name (case insensitive)
-              const nameMatches = allRecordings.filter(r => {
-                const recordingCandidateName = r.candidates?.name?.toLowerCase();
-                const searchName = candidateName.toLowerCase();
-                
-                if (!recordingCandidateName || !searchName) return false;
-                
-                // Use more strict matching to prevent false positives:
-                // 1. Exact match (after trimming and case normalization)
-                if (recordingCandidateName.trim() === searchName.trim()) return true;
-                
-                // 2. Full name parts matching (e.g., "Sarah Wong" matches "Wong, Sarah")
-                const recordingNameParts = recordingCandidateName.split(/\s+/).filter((p: string) => p.length > 1);
-                const searchNameParts = searchName.split(/\s+/).filter((p: string) => p.length > 1);
-                
-                // Check if ALL parts of one name are contained in the other
-                const allSearchPartsInRecording = searchNameParts.every((part: string) => 
-                  recordingNameParts.some((recPart: string) => recPart === part || recPart.includes(part))
-                );
-                
-                const allRecordingPartsInSearch = recordingNameParts.every((part: string) => 
-                  searchNameParts.some((searchPart: string) => searchPart === part || searchPart.includes(part))
-                );
-                
-                return allSearchPartsInRecording || allRecordingPartsInSearch;
-              });
-              
-              if (nameMatches.length > 0) {
-                console.log('Found recordings by candidate name match:', nameMatches.length);
-                setRecordings(nameMatches);
-                await fetchQuestionsForRecordings(nameMatches);
-                return;
-              }
-            }
-          }
+          // Name-based matching has been disabled to prevent cross-contamination between candidates
+          console.log('Name-based matching is disabled to prevent cross-contamination between candidates');
           
           console.log('No recordings found through any method');
           setRecordings([]);
@@ -899,11 +843,20 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
           </div>
         ) : recordings.length === 0 ? (
           <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-500">No interview recordings available for this candidate.</p>
+            <p className="text-gray-500 mb-4">No interview recordings available for this candidate.</p>
             <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
               <p className="text-yellow-800">
-                <strong>Note:</strong> Recordings may exist in a different candidate record. Check the Admin Dashboard for recordings from {fileName || 'this candidate'}.
+                <strong>Note:</strong> Only recordings explicitly linked to this specific candidate will appear here. 
+                Name-based matching has been disabled to prevent incorrect associations.
               </p>
+              <p className="text-yellow-800 mt-2">
+                If this candidate has completed an interview and you don't see the recordings, please check:
+              </p>
+              <ul className="list-disc ml-5 mt-2 text-yellow-800">
+                <li>The candidate completed the interview using the link generated from this specific resume</li>
+                <li>The interview was fully submitted after all questions were answered</li>
+                <li>You're viewing the correct candidate profile for {fileName || 'this candidate'}</li>
+              </ul>
             </div>
           </div>
         ) : (
