@@ -139,6 +139,44 @@ export async function POST(req: NextRequest) {
         return Math.min(Math.max(score, 0), 10);
       };
       
+      // Convert level string to number if needed
+      const normalizeLevel = (level: any): number => {
+        // Default level if missing
+        if (level === undefined || level === null) return 4;
+        
+        // If already a number, ensure it's within valid range (1-10)
+        if (typeof level === 'number') {
+          return Math.min(Math.max(Math.round(level), 1), 10);
+        }
+        
+        // Convert string levels to numbers
+        const levelMap: Record<string, number> = {
+          'Basic': 1,
+          'Novice': 2,
+          'Intermediate': 3,
+          'Developing': 4,
+          'Proficient': 5,
+          'Advanced': 6,
+          'Expert': 7,
+          'Master': 8,
+          'Distinguished': 9,
+          'Exceptional': 10
+        };
+        
+        // If the level is a string and in our map, use the mapped value
+        if (typeof level === 'string' && level in levelMap) {
+          return levelMap[level];
+        }
+        
+        // Try to parse as integer if it's a numeric string
+        if (typeof level === 'string' && !isNaN(Number(level))) {
+          return Math.min(Math.max(Math.round(Number(level)), 1), 10);
+        }
+        
+        // Default to mid-level (4) if we can't determine the level
+        return 4;
+      };
+      
       // Update or create the resume evaluation record
       const { data: existingEvaluation, error: evalError } = await supabase
         .from('resume_evaluations')
@@ -155,10 +193,10 @@ export async function POST(req: NextRequest) {
         organization_impact_score: normalizeScore(analysisData.dimensions?.organizationImpact?.score),
         independence_score: normalizeScore(analysisData.dimensions?.independence?.score),
         strategic_alignment_score: normalizeScore(analysisData.dimensions?.strategicAlignment?.score),
-        ownership_level: analysisData.dimensions?.ownership?.level || 4,
-        organization_impact_level: analysisData.dimensions?.organizationImpact?.level || 4,
-        independence_level: analysisData.dimensions?.independence?.level || 4,
-        strategic_alignment_level: analysisData.dimensions?.strategicAlignment?.level || 4,
+        ownership_level: normalizeLevel(analysisData.dimensions?.ownership?.level),
+        organization_impact_level: normalizeLevel(analysisData.dimensions?.organizationImpact?.level),
+        independence_level: normalizeLevel(analysisData.dimensions?.independence?.level),
+        strategic_alignment_level: normalizeLevel(analysisData.dimensions?.strategicAlignment?.level),
         analysis_json: analysisData,
         selected_for_interview: existingEvaluation?.selected_for_interview || false
       };

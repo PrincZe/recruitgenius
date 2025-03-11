@@ -1,10 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { extractTextFromPdf } from '@/lib/utils/pdfUtils';
+import { supabase } from '@/lib/supabase/supabaseClient';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+/**
+ * Convert level string to number
+ * Ensures that level values are stored as integers in the database
+ */
+const normalizeLevel = (level: any): number => {
+  // Default level if missing
+  if (level === undefined || level === null) return 4;
+  
+  // If already a number, ensure it's within valid range (1-10)
+  if (typeof level === 'number') {
+    return Math.min(Math.max(Math.round(level), 1), 10);
+  }
+  
+  // Convert string levels to numbers
+  const levelMap: Record<string, number> = {
+    'Basic': 1,
+    'Novice': 2,
+    'Intermediate': 3,
+    'Developing': 4,
+    'Proficient': 5,
+    'Advanced': 6,
+    'Expert': 7,
+    'Master': 8,
+    'Distinguished': 9,
+    'Exceptional': 10
+  };
+  
+  // If the level is a string and in our map, use the mapped value
+  if (typeof level === 'string' && level in levelMap) {
+    return levelMap[level];
+  }
+  
+  // Try to parse as integer if it's a numeric string
+  if (typeof level === 'string' && !isNaN(Number(level))) {
+    return Math.min(Math.max(Math.round(Number(level)), 1), 10);
+  }
+  
+  // Default to mid-level (4) if we can't determine the level
+  return 4;
+};
 
 export async function POST(req: NextRequest) {
   try {
