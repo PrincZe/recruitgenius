@@ -235,6 +235,9 @@ Ensure the JSON is valid and properly formatted.
 
     const responseText = response.choices[0]?.message?.content || '';
     
+    // Add detailed response logging
+    console.log("Raw OpenAI response text:", responseText.slice(0, 200) + "..."); // Show first 200 chars
+
     // Extract the JSON from the response
     let analysisData;
     try {
@@ -258,6 +261,14 @@ Ensure the JSON is valid and properly formatted.
       }
     }
 
+    // After parsing the analysisData, add:
+    console.log("Parsed analysis data structure:", {
+      hasOverallScore: 'overallScore' in analysisData,
+      hasDimensions: 'dimensions' in analysisData,
+      hasAnalysis: 'analysis' in analysisData,
+      topLevelKeys: Object.keys(analysisData)
+    });
+
     // Ensure the analysis has the correct structure
     return ensureValidAnalysisStructure(analysisData);
   } catch (error) {
@@ -271,6 +282,8 @@ Ensure the JSON is valid and properly formatted.
  * Creates a fallback analysis result when OpenAI fails
  */
 function createFallbackAnalysis(errorMessage: string) {
+  console.log("Creating fallback analysis with message:", errorMessage);
+  
   return {
     overallScore: 50,
     dimensions: {

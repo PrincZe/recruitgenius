@@ -158,6 +158,12 @@ export default function CandidatesDashboard() {
       
       // Calculate statistics
       calculateStatistics(evaluationsWithCandidates);
+
+      // Let's add some detailed debug logging to help diagnose the issue
+      console.log('Loading candidates page...');
+
+      // After fetching candidates, add this logging:
+      console.log(`Fetched ${evaluationsWithCandidates.length} candidates:`, evaluationsWithCandidates);
     } catch (error) {
       console.error('Error fetching evaluations:', error);
     } finally {
