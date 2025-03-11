@@ -10,44 +10,11 @@ import * as pdfjs from 'pdfjs-dist';
 // Only configure PDF.js in browser environments
 if (typeof window !== 'undefined') {
   try {
-    // Configure worker source for PDF.js
-    // First try loading from CDN
-    const workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
-    
-    // Set up the worker source
-    pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
-    
-    // Create a timeout to check if the worker loads
-    const workerLoadTimeout = setTimeout(() => {
-      console.warn("PDF.js worker load timed out, using fake worker");
-      // If worker fails to load, use fake worker
-      pdfjs.GlobalWorkerOptions.workerSrc = '';
-    }, 3000);
-    
-    // Create a test script to see if the CDN is reachable
-    const testScript = document.createElement('script');
-    testScript.src = workerSrc;
-    testScript.onload = () => {
-      clearTimeout(workerLoadTimeout);
-      console.log("PDF.js worker script loaded successfully");
-    };
-    testScript.onerror = () => {
-      clearTimeout(workerLoadTimeout);
-      console.warn("PDF.js worker failed to load from CDN, using fake worker");
-      pdfjs.GlobalWorkerOptions.workerSrc = '';
-    };
-    document.head.appendChild(testScript);
-    
-    console.log("PDF.js worker configuration initiated");
+    // Skip CDN worker and use fake worker consistently to avoid version mismatch
+    pdfjs.GlobalWorkerOptions.workerSrc = '';
+    console.log("PDF.js configured to use fake worker for consistent behavior");
   } catch (err) {
     console.error("Error configuring PDF.js worker:", err);
-    // Use fake worker as fallback
-    try {
-      pdfjs.GlobalWorkerOptions.workerSrc = '';
-      console.log("Using PDF.js fake worker as fallback");
-    } catch (fallbackErr) {
-      console.error("Failed to set up fake worker:", fallbackErr);
-    }
   }
 }
 
