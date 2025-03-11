@@ -90,24 +90,43 @@ export default function ScreeningPage() {
   };
 
   const handleUploadComplete = async (resumeIds: string[]) => {
-    if (!selectedJobId || resumeIds.length === 0) return;
+    if (!selectedJobId || resumeIds.length === 0) {
+      console.log('No job or resume IDs provided to handleUploadComplete');
+      return;
+    }
 
+    console.log(`Starting analysis of ${resumeIds.length} resumes for job ${selectedJobId}`);
     setAnalyzingResumes(true);
     
     try {
-      // Analyze each resume
-      for (const resumeId of resumeIds) {
-        await analyzeResume(resumeId, selectedJobId);
+      // Analyze each resume with better progress tracking
+      for (let i = 0; i < resumeIds.length; i++) {
+        const resumeId = resumeIds[i];
+        console.log(`Analyzing resume ${i+1}/${resumeIds.length}: ${resumeId}`);
+        
+        try {
+          const result = await analyzeResume(resumeId, selectedJobId);
+          if (result.success) {
+            console.log(`Successfully analyzed resume ${resumeId}`);
+          } else {
+            console.error(`Failed to analyze resume ${resumeId}:`, result.error);
+          }
+        } catch (analysisError) {
+          console.error(`Error analyzing resume ${resumeId}:`, analysisError);
+          // Continue with next resume instead of stopping the whole process
+        }
       }
       
       // Refresh evaluations
+      console.log('Analysis complete, fetching updated evaluations');
       await fetchEvaluations(selectedJobId);
       
       // Show results tab
       setShowResults(true);
+      console.log('Resume analysis process complete');
     } catch (error) {
-      console.error('Error analyzing resumes:', error);
-      alert('There was an error analyzing the resumes. Please try again.');
+      console.error('Error in resume analysis process:', error);
+      alert('There was an error analyzing one or more resumes. Some data may be incomplete.');
     } finally {
       setAnalyzingResumes(false);
     }

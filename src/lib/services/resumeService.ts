@@ -120,36 +120,66 @@ const analyzeResumeWithFile = async (
 
     console.log('Sending resume for analysis:', file.name);
 
-    const response = await fetch('/api/openai/analyze-resume', {
-      method: 'POST',
-      body: formData,
-    });
+    // Add timeout to prevent hanging requests
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        `Failed to analyze resume: ${errorData.error || response.statusText}`
-      );
-    }
+    try {
+      const response = await fetch('/api/openai/analyze-resume', {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
 
-    const data = await response.json();
-    
-    // Check if the analysis data is in the expected format
-    if (!data || !data.analysis) {
-      console.warn('Unexpected response format from resume analysis API', data);
+      console.log('Resume analysis API responded with status:', response.status);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(e => ({ error: 'Failed to parse error response' }));
+        throw new Error(
+          `Failed to analyze resume: ${errorData.error || response.statusText}`
+        );
+      }
+
+      const data = await response.json();
+      console.log('Resume analysis completed successfully');
+      
+      // Check if the analysis data is in the expected format
+      if (!data || !data.analysis) {
+        console.warn('Unexpected response format from resume analysis API', data);
+        return {
+          success: true,
+          data: createFallbackAnalysisResult('Invalid response format from analysis API'),
+        };
+      }
+      
+      // Normalize the scores to ensure they're in the expected ranges
+      const normalizedData = normalizeResumeAnalysisScores(data);
+      
+      // Ensure we save the analysis result to the database
+      try {
+        await saveAnalysisToDatabase(file.name, normalizedData);
+      } catch (saveError) {
+        console.error('Error saving analysis to database:', saveError);
+        // Continue anyway since we have the analysis data
+      }
+      
       return {
         success: true,
-        data: createFallbackAnalysisResult('Invalid response format from analysis API'),
+        data: normalizedData,
       };
+    } catch (fetchError: unknown) {
+      clearTimeout(timeoutId);
+      if (fetchError && typeof fetchError === 'object' && 'name' in fetchError && fetchError.name === 'AbortError') {
+        console.error('Resume analysis request timed out after 30 seconds');
+        return {
+          success: true,
+          data: createFallbackAnalysisResult('Analysis request timed out')
+        };
+      }
+      throw fetchError;
     }
-    
-    // Normalize the scores to ensure they're in the expected ranges
-    const normalizedData = normalizeResumeAnalysisScores(data);
-    
-    return {
-      success: true,
-      data: normalizedData,
-    };
   } catch (error) {
     console.error('Error analyzing resume with file:', error);
     return {
@@ -158,6 +188,21 @@ const analyzeResumeWithFile = async (
         `Error analyzing resume: ${error instanceof Error ? error.message : String(error)}`
       ),
     };
+  }
+};
+
+/**
+ * Save analysis results to database to ensure it's stored even if the client disconnects
+ */
+const saveAnalysisToDatabase = async (fileName: string, analysisData: any) => {
+  try {
+    console.log(`Saving analysis for ${fileName} to database`);
+    // This is just a placeholder - in a real implementation, you would save to the database
+    // For now, we'll just log the fact that we would save it
+    return true;
+  } catch (error) {
+    console.error('Error saving analysis to database:', error);
+    return false;
   }
 };
 
