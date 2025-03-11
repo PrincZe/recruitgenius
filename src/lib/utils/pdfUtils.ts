@@ -6,12 +6,11 @@
  */
 
 import * as pdfjs from 'pdfjs-dist';
-import { getDocument, PDFDocumentProxy } from 'pdfjs-dist';
+import { getDocument } from 'pdfjs-dist';
 
-// Set the worker source path
-// In a production environment, consider hosting this worker file yourself
-const PDFJS_WORKER_URL = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
-pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+// Configure PDF.js to use a fake worker to avoid issues with worker loading
+// This is more compatible with Next.js and various deployment environments
+pdfjs.GlobalWorkerOptions.workerSrc = '';  // Empty string forces using the fake worker
 
 /**
  * Extract text from a PDF file
@@ -32,8 +31,11 @@ export const extractTextFromPdf = async (file: File): Promise<string> => {
     // Convert file to ArrayBuffer for PDF.js
     const arrayBuffer = await file.arrayBuffer();
     
+    // Enable better error handling with fake worker
+    pdfjs.GlobalWorkerOptions.workerSrc = '';  // Ensure fake worker is used
+    
     // Load the PDF document using PDF.js
-    const loadingTask = getDocument({ data: arrayBuffer });
+    const loadingTask = getDocument({ data: arrayBuffer, disableFontFace: true });
     const pdf = await loadingTask.promise;
     
     console.log(`PDF loaded successfully with ${pdf.numPages} pages`);
@@ -42,13 +44,18 @@ export const extractTextFromPdf = async (file: File): Promise<string> => {
     let fullText = '';
     
     for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items
-        .map((item: any) => item.str)
-        .join(' ');
-      
-      fullText += pageText + '\n\n';
+      try {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          .map((item: any) => item.str)
+          .join(' ');
+        
+        fullText += pageText + '\n\n';
+      } catch (pageError) {
+        console.warn(`Error extracting text from page ${i}:`, pageError);
+        fullText += `[Error extracting text from page ${i}]\n\n`;
+      }
     }
     
     console.log(`Extracted ${fullText.length} characters of text from PDF`);
@@ -116,11 +123,19 @@ ${fullText}
  */
 export const generatePdfPreview = async (file: File): Promise<string> => {
   try {
+    // Force using fake worker
+    pdfjs.GlobalWorkerOptions.workerSrc = '';
+    
     // Convert file to ArrayBuffer for PDF.js
     const arrayBuffer = await file.arrayBuffer();
     
-    // Load the PDF document using PDF.js
-    const loadingTask = getDocument({ data: arrayBuffer });
+    // Load the PDF document using PDF.js with simpler options
+    const loadingTask = getDocument({ 
+      data: arrayBuffer, 
+      disableFontFace: true,
+      cMapUrl: undefined,
+      cMapPacked: false
+    });
     const pdf = await loadingTask.promise;
     
     // Get the first page

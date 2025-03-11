@@ -87,13 +87,21 @@ export async function POST(req: NextRequest) {
       const file = new File([blob], fileName, { type: 'application/pdf' });
       
       // 3. Extract text from the PDF
+      console.log(`Attempting to extract text from resume PDF: ${fileName}`);
       const resumeText = await extractTextFromPdf(file);
       
       if (!resumeText || resumeText.startsWith('Error')) {
-        return NextResponse.json(
-          { error: `Failed to extract text from resume: ${resumeText}` }, 
-          { status: 500 }
-        );
+        console.error('Failed to extract text from resume:', resumeText);
+        
+        // If text extraction failed but we have a fallback in resumeText, use it
+        if (resumeText.includes('RESUME METADATA (FALLBACK') || resumeText.includes('WARNING: ACTUAL PDF TEXT EXTRACTION FAILED')) {
+          console.log('Using fallback metadata from resume since extraction failed');
+        } else {
+          return NextResponse.json(
+            { error: `Failed to extract text from resume: ${resumeText}` }, 
+            { status: 500 }
+          );
+        }
       }
       
       // 4. Analyze the resume text with OpenAI

@@ -27,12 +27,19 @@ export async function POST(req: NextRequest) {
       const text = await extractTextFromPdf(file);
       
       if (!text || text.startsWith('Error')) {
-        return new Response(
-          JSON.stringify({
-            error: 'Failed to extract text from resume: ' + text,
-          }),
-          { status: 500 }
-        );
+        console.error('Failed to extract text from resume:', text);
+        
+        // If text extraction failed but we have a fallback in text, use it
+        if (text && (text.includes('RESUME METADATA (FALLBACK') || text.includes('WARNING: ACTUAL PDF TEXT EXTRACTION FAILED'))) {
+          console.log('Using fallback metadata from resume since extraction failed');
+        } else {
+          return new Response(
+            JSON.stringify({
+              error: 'Failed to extract text from resume: ' + text,
+            }),
+            { status: 500 }
+          );
+        }
       }
       
       if (!jobDescription) {
