@@ -426,9 +426,26 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
                 const recordingCandidateName = r.candidates?.name?.toLowerCase();
                 const searchName = candidateName.toLowerCase();
                 
-                // Check if the recording's candidate name contains our search name or vice versa
-                return recordingCandidateName?.includes(searchName) || 
-                       searchName.includes(recordingCandidateName || '');
+                if (!recordingCandidateName || !searchName) return false;
+                
+                // Use more strict matching to prevent false positives:
+                // 1. Exact match (after trimming and case normalization)
+                if (recordingCandidateName.trim() === searchName.trim()) return true;
+                
+                // 2. Full name parts matching (e.g., "Sarah Wong" matches "Wong, Sarah")
+                const recordingNameParts = recordingCandidateName.split(/\s+/).filter((p: string) => p.length > 1);
+                const searchNameParts = searchName.split(/\s+/).filter((p: string) => p.length > 1);
+                
+                // Check if ALL parts of one name are contained in the other
+                const allSearchPartsInRecording = searchNameParts.every((part: string) => 
+                  recordingNameParts.some((recPart: string) => recPart === part || recPart.includes(part))
+                );
+                
+                const allRecordingPartsInSearch = recordingNameParts.every((part: string) => 
+                  searchNameParts.some((searchPart: string) => searchPart === part || searchPart.includes(part))
+                );
+                
+                return allSearchPartsInRecording || allRecordingPartsInSearch;
               });
               
               if (nameMatches.length > 0) {

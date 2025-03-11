@@ -13,7 +13,6 @@ export default function Navbar() {
     { href: '/admin', label: 'Dashboard' },
     { href: '/admin/screening', label: 'Resume Screening' },
     { href: '/admin/candidates', label: 'Candidates' },
-    { href: '/admin/questions', label: 'Questions' },
   ];
 
   return (
