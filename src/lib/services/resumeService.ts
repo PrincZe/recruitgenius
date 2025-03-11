@@ -38,7 +38,7 @@ export const analyzeResume = async (
   try {
     // Check if we're dealing with a File object or a resumeId
     if (typeof fileOrResumeId === 'string') {
-      // Handle the old method (resumeId and jobPostingId)
+      // Handle the case where we have a resumeId and jobPostingId
       const resumeId = fileOrResumeId;
       const jobPostingId = jobDescriptionOrJobId;
       
@@ -85,7 +85,7 @@ export const analyzeResume = async (
         const file = new File([blob], fileName, { type: 'application/pdf' });
         
         // Now call the analyze function with the file and job description
-        return await analyzeResumeWithFile(file, jobPosting.description || "Engineering manager position");
+        return await analyzeResumeWithFile(file, jobPosting.description || "Engineering manager position", resumeId, jobPostingId);
       } catch (fileError) {
         console.error('Error fetching file from storage:', fileError);
         return {
@@ -94,7 +94,9 @@ export const analyzeResume = async (
         };
       }
     } else {
-      // Handle the new method (file and jobDescription)
+      // Handle the case where we have a File object and job description
+      // In this case, we don't have a resumeId or jobPostingId yet
+      // The caller should handle creating these and saving the results
       return await analyzeResumeWithFile(fileOrResumeId, jobDescriptionOrJobId);
     }
   } catch (error) {
@@ -111,12 +113,18 @@ export const analyzeResume = async (
  */
 const analyzeResumeWithFile = async (
   file: File,
-  jobDescription: string
+  jobDescription: string,
+  resumeId?: string,
+  jobPostingId?: string
 ): Promise<AnalysisResult> => {
   try {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('jobDescription', jobDescription);
+    
+    // Add resumeId and jobPostingId if available
+    if (resumeId) formData.append('resumeId', resumeId);
+    if (jobPostingId) formData.append('jobPostingId', jobPostingId);
 
     console.log('Sending resume for analysis:', file.name);
 
@@ -150,16 +158,24 @@ const analyzeResumeWithFile = async (
         console.warn('Unexpected response format from resume analysis API', data);
         return {
           success: true,
-          data: createFallbackAnalysisResult('Invalid response format from analysis API'),
+          data: createFallbackAnalysisResult('Invalid response format from analysis API', resumeId, jobPostingId),
         };
       }
+      
+      // Add resumeId and jobPostingId to the data
+      data.analysis.resumeId = resumeId;
+      data.analysis.jobPostingId = jobPostingId;
       
       // Normalize the scores to ensure they're in the expected ranges
       const normalizedData = normalizeResumeAnalysisScores(data);
       
       // Ensure we save the analysis result to the database
       try {
-        await saveAnalysisToDatabase(file.name, normalizedData);
+        if (resumeId && jobPostingId) {
+          await saveAnalysisToDatabase(file.name, normalizedData, resumeId, jobPostingId);
+        } else {
+          console.warn('Cannot save analysis to database: missing resumeId or jobPostingId');
+        }
       } catch (saveError) {
         console.error('Error saving analysis to database:', saveError);
         // Continue anyway since we have the analysis data
@@ -175,7 +191,7 @@ const analyzeResumeWithFile = async (
         console.error('Resume analysis request timed out after 30 seconds');
         return {
           success: true,
-          data: createFallbackAnalysisResult('Analysis request timed out')
+          data: createFallbackAnalysisResult('Analysis request timed out', resumeId, jobPostingId),
         };
       }
       throw fetchError;
@@ -185,7 +201,9 @@ const analyzeResumeWithFile = async (
     return {
       success: true, // Return success true with fallback data
       data: createFallbackAnalysisResult(
-        `Error analyzing resume: ${error instanceof Error ? error.message : String(error)}`
+        `Error analyzing resume: ${error instanceof Error ? error.message : String(error)}`,
+        resumeId,
+        jobPostingId
       ),
     };
   }
@@ -194,11 +212,80 @@ const analyzeResumeWithFile = async (
 /**
  * Save analysis results to database to ensure it's stored even if the client disconnects
  */
-const saveAnalysisToDatabase = async (fileName: string, analysisData: any) => {
+const saveAnalysisToDatabase = async (fileName: string, analysisData: any, resumeId?: string, jobPostingId?: string) => {
   try {
     console.log(`Saving analysis for ${fileName} to database`);
-    // This is just a placeholder - in a real implementation, you would save to the database
-    // For now, we'll just log the fact that we would save it
+    
+    // Extract the necessary data from the analysis
+    const data = analysisData.analysis || analysisData;
+    
+    if (!data || !data.dimensions) {
+      console.error('Invalid analysis data structure:', data);
+      return false;
+    }
+    
+    // Use either the IDs from the analysis or the ones passed in
+    const actualResumeId = resumeId || data.resumeId;
+    const actualJobPostingId = jobPostingId || data.jobPostingId;
+    
+    if (!actualResumeId || !actualJobPostingId) {
+      console.error('Missing resumeId or jobPostingId in analysis data');
+      return false;
+    }
+    
+    console.log(`Using resumeId: ${actualResumeId}, jobPostingId: ${actualJobPostingId}`);
+    
+    // Extract scores from dimensions
+    const ownershipScore = data.dimensions.ownership?.score || 5;
+    const organizationImpactScore = data.dimensions.organizationImpact?.score || 5;
+    const independenceScore = data.dimensions.independence?.score || 5;
+    const strategicAlignmentScore = data.dimensions.strategicAlignment?.score || 5;
+    const skillsScore = data.dimensions.skills?.score || 5;
+    const overallScore = data.overallScore || 50;
+    
+    // Convert scores to levels (1-10)
+    const ownershipLevel = Math.round(ownershipScore);
+    const organizationImpactLevel = Math.round(organizationImpactScore);
+    const independenceLevel = Math.round(independenceScore);
+    const strategicAlignmentLevel = Math.round(strategicAlignmentScore);
+    const skillsLevel = Math.round(skillsScore);
+    
+    // Store the full analysis JSON for future reference
+    const analysisJson = {
+      dimensions: data.dimensions,
+      analysis: data.analysis
+    };
+    
+    // Insert into resume_evaluations table
+    const { data: savedData, error } = await supabase
+      .from('resume_evaluations')
+      .insert([
+        {
+          resume_id: actualResumeId,
+          job_posting_id: actualJobPostingId,
+          overall_score: overallScore,
+          ownership_score: ownershipScore,
+          organization_impact_score: organizationImpactScore,
+          independence_score: independenceScore, 
+          strategic_alignment_score: strategicAlignmentScore,
+          skills_score: skillsScore,
+          ownership_level: ownershipLevel,
+          organization_impact_level: organizationImpactLevel,
+          independence_level: independenceLevel,
+          strategic_alignment_level: strategicAlignmentLevel,
+          skills_level: skillsLevel,
+          analysis_json: analysisJson,
+          selected_for_interview: false
+        }
+      ])
+      .select();
+    
+    if (error) {
+      console.error('Error saving analysis to database:', error);
+      return false;
+    }
+    
+    console.log('Analysis saved successfully to database:', savedData);
     return true;
   } catch (error) {
     console.error('Error saving analysis to database:', error);
@@ -209,7 +296,7 @@ const saveAnalysisToDatabase = async (fileName: string, analysisData: any) => {
 /**
  * Creates a fallback analysis result when the API fails
  */
-const createFallbackAnalysisResult = (errorMessage: string) => {
+const createFallbackAnalysisResult = (errorMessage: string, resumeId?: string, jobPostingId?: string) => {
   return {
     analysis: {
       overallScore: 50,
@@ -225,7 +312,9 @@ const createFallbackAnalysisResult = (errorMessage: string) => {
         strengths: ["Technical experience", "Education background", "Communication skills"],
         developmentAreas: ["Could not perform detailed analysis", "Using fallback evaluation"],
         matchedSkills: ["JavaScript", "TypeScript", "React", "Node.js"]
-      }
+      },
+      resumeId: resumeId,
+      jobPostingId: jobPostingId
     }
   };
 };

@@ -74,13 +74,47 @@ export default function ScreeningPage() {
 
   const fetchEvaluations = async (jobId: string) => {
     try {
+      console.log(`Fetching evaluations for job ID: ${jobId}`);
       setLoading(true);
-      const evaluations = await getEvaluationsForJob(jobId);
-      setResumeEvaluations(evaluations);
       
-      // If we have evaluations, show results tab
-      if (evaluations.length > 0) {
-        setShowResults(true);
+      const { data: evaluations, error } = await supabase
+        .from('resume_evaluations')
+        .select(`
+          id,
+          resume_id,
+          overall_score,
+          ownership_score,
+          organization_impact_score,
+          independence_score,
+          strategic_alignment_score,
+          skills_score,
+          ownership_level,
+          organization_impact_level,
+          independence_level,
+          strategic_alignment_level,
+          skills_level,
+          selected_for_interview,
+          resume:resume_id (
+            id,
+            file_name,
+            file_url
+          )
+        `)
+        .eq('job_posting_id', jobId)
+        .order('overall_score', { ascending: false });
+      
+      if (error) {
+        console.error('Error fetching evaluations:', error);
+        return;
+      }
+      
+      console.log(`Fetched ${evaluations?.length || 0} evaluations for job ID ${jobId}:`, evaluations);
+      
+      if (evaluations) {
+        setResumeEvaluations(evaluations);
+      } else {
+        console.log('No evaluations found for this job');
+        setResumeEvaluations([]);
       }
     } catch (error) {
       console.error('Error fetching evaluations:', error);
@@ -100,14 +134,18 @@ export default function ScreeningPage() {
     
     try {
       // Analyze each resume with better progress tracking
+      let successfulAnalyses = 0;
       for (let i = 0; i < resumeIds.length; i++) {
         const resumeId = resumeIds[i];
-        console.log(`Analyzing resume ${i+1}/${resumeIds.length}: ${resumeId}`);
+        console.log(`Analyzing resume ${i+1}/${resumeIds.length}: ${resumeId} for job ${selectedJobId}`);
         
         try {
+          // Ensure we pass both resumeId and jobPostingId
           const result = await analyzeResume(resumeId, selectedJobId);
+          
           if (result.success) {
             console.log(`Successfully analyzed resume ${resumeId}`);
+            successfulAnalyses++;
           } else {
             console.error(`Failed to analyze resume ${resumeId}:`, result.error);
           }
@@ -118,12 +156,19 @@ export default function ScreeningPage() {
       }
       
       // Refresh evaluations
-      console.log('Analysis complete, fetching updated evaluations');
+      console.log(`Analysis complete, ${successfulAnalyses} of ${resumeIds.length} successful. Fetching updated evaluations.`);
       await fetchEvaluations(selectedJobId);
       
       // Show results tab
       setShowResults(true);
       console.log('Resume analysis process complete');
+      
+      // Alert the user of the results
+      if (successfulAnalyses > 0) {
+        alert(`Successfully analyzed ${successfulAnalyses} of ${resumeIds.length} resumes.`);
+      } else {
+        alert('Failed to analyze any resumes. Please check the console for more details.');
+      }
     } catch (error) {
       console.error('Error in resume analysis process:', error);
       alert('There was an error analyzing one or more resumes. Some data may be incomplete.');

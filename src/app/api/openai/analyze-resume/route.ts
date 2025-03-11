@@ -57,8 +57,11 @@ export async function POST(req: NextRequest) {
       const formData = await req.formData();
       const file = formData.get('file') as File;
       const jobDescription = formData.get('jobDescription') as string;
+      const resumeId = formData.get('resumeId') as string;
+      const jobPostingId = formData.get('jobPostingId') as string;
 
       console.log("Received FormData request with file:", file?.name, "size:", file?.size);
+      console.log("Resume ID:", resumeId, "Job Posting ID:", jobPostingId);
 
       if (!file || !jobDescription) {
         console.error("Missing required fields:", { hasFile: !!file, hasJobDescription: !!jobDescription });
@@ -96,12 +99,32 @@ export async function POST(req: NextRequest) {
 
       // Continue with the analysis
       console.log("Starting OpenAI analysis");
-      return await analyzeResumeWithOpenAI(text, jobDescription);
+      const analysisData = await analyzeResumeWithOpenAI(text, jobDescription);
+      
+      // Add the resumeId and jobPostingId to the response data
+      if (resumeId && jobPostingId) {
+        // Create a response with the augmented data
+        return NextResponse.json({
+          success: true,
+          analysis: {
+            ...analysisData,
+            resumeId,
+            jobPostingId
+          }
+        });
+      }
+      
+      // Return the original analysis data
+      return NextResponse.json({
+        success: true,
+        analysis: analysisData
+      });
     } else {
       // Handle the old JSON format for backward compatibility
       console.log("Received JSON request");
       
-      const { resumeText, jobDescription } = await req.json();
+      const body = await req.json();
+      const { resumeText, jobDescription, resumeId, jobPostingId } = body;
 
       if (!resumeText || !jobDescription) {
         console.error("Missing required fields in JSON format");
@@ -113,11 +136,29 @@ export async function POST(req: NextRequest) {
 
       // Continue with the analysis
       console.log("Starting OpenAI analysis with JSON data");
-      return await analyzeResumeWithOpenAI(resumeText, jobDescription);
+      const analysisData = await analyzeResumeWithOpenAI(resumeText, jobDescription);
+      
+      // Add the resumeId and jobPostingId to the response data
+      if (resumeId && jobPostingId) {
+        return NextResponse.json({
+          success: true,
+          analysis: {
+            ...analysisData,
+            resumeId,
+            jobPostingId
+          }
+        });
+      }
+      
+      // Return the original analysis data
+      return NextResponse.json({
+        success: true,
+        analysis: analysisData
+      });
     }
   } catch (error) {
     console.error('Error in resume analysis API:', error);
-    // Return a fallback analysis instead of an error
+    // Return a fallback analysis
     return NextResponse.json({
       success: true,
       analysis: createFallbackAnalysis(`API error: ${error instanceof Error ? error.message : String(error)}`)
@@ -127,32 +168,12 @@ export async function POST(req: NextRequest) {
 
 /**
  * Helper function to analyze resume text with OpenAI
+ * Returns the analysis data directly (not a Response object)
  */
 async function analyzeResumeWithOpenAI(resumeText: string, jobDescription: string) {
   if (!process.env.OPENAI_API_KEY) {
     console.error('Missing OpenAI API key');
-    return NextResponse.json(
-      { 
-        success: true,
-        analysis: {
-          overallScore: 50,
-          dimensions: {
-            ownership: { score: 5, level: "Proficient" },
-            organizationImpact: { score: 5, level: "Proficient" },
-            independence: { score: 5, level: "Proficient" },
-            strategicAlignment: { score: 5, level: "Proficient" },
-            skills: { score: 5, level: "Proficient" }
-          },
-          analysis: {
-            summary: "Analysis could not be completed due to missing API key. Using fallback evaluation.",
-            strengths: ["Technical experience", "Education background", "Communication skills"],
-            developmentAreas: ["Missing API key prevented detailed analysis"],
-            matchedSkills: ["Using fallback evaluation"]
-          }
-        }
-      }, 
-      { status: 200 }
-    );
+    return createFallbackAnalysis('OpenAI API key not configured');
   }
 
   console.log(`Analyzing resume against job description (first 50 chars): "${jobDescription.substring(0, 50)}..."`);
@@ -228,35 +249,21 @@ Ensure the JSON is valid and properly formatted.
         } catch (e2) {
           console.error('Failed to parse JSON from response:', e2);
           // Return a fallback analysis instead of error
-          return NextResponse.json({
-            success: true,
-            analysis: createFallbackAnalysis("Failed to parse analysis results")
-          });
+          return createFallbackAnalysis("Failed to parse analysis results");
         }
       } else {
         console.error('No JSON found in response');
         // Return a fallback analysis instead of error
-        return NextResponse.json({
-          success: true,
-          analysis: createFallbackAnalysis("No analysis results found")
-        });
+        return createFallbackAnalysis("No analysis results found");
       }
     }
 
     // Ensure the analysis has the correct structure
-    const validatedAnalysis = ensureValidAnalysisStructure(analysisData);
-
-    return NextResponse.json({
-      success: true,
-      analysis: validatedAnalysis
-    });
+    return ensureValidAnalysisStructure(analysisData);
   } catch (error) {
     console.error('Error during OpenAI analysis:', error);
     // Return a fallback analysis instead of error
-    return NextResponse.json({
-      success: true,
-      analysis: createFallbackAnalysis(`Analysis error: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    });
+    return createFallbackAnalysis(`Analysis error: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
