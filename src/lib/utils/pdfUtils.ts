@@ -6,11 +6,32 @@
  */
 
 import * as pdfjs from 'pdfjs-dist';
-import { getDocument } from 'pdfjs-dist';
 
-// Configure PDF.js to use a fake worker to avoid issues with worker loading
-// This is more compatible with Next.js and various deployment environments
-pdfjs.GlobalWorkerOptions.workerSrc = '';  // Empty string forces using the fake worker
+// The correct way to set up PDF.js worker
+// 1. First check if it's already defined to prevent multiple initializations
+if (typeof window !== 'undefined' && !pdfjs.GlobalWorkerOptions.workerSrc) {
+  try {
+    // 2. Configure to use fake worker - this should work in both dev and production
+    // and avoids issues with loading worker from CDN URLs
+    pdfjs.GlobalWorkerOptions.workerSrc = '';
+    
+    // Alternative approach with a dummy worker constructor
+    const pdfjsWorker = { 
+      WorkerMessageHandler: { 
+        setup: () => {} 
+      } 
+    };
+    // @ts-ignore - Assigning the dummy worker
+    if (typeof window !== 'undefined') {
+      // @ts-ignore - Setting a global fallback
+      window.pdfjsWorker = pdfjsWorker;
+    }
+
+    console.log("PDF.js worker configured to use fake worker");
+  } catch (err) {
+    console.error("Error configuring PDF.js worker:", err);
+  }
+}
 
 /**
  * Extract text from a PDF file
@@ -31,11 +52,22 @@ export const extractTextFromPdf = async (file: File): Promise<string> => {
     // Convert file to ArrayBuffer for PDF.js
     const arrayBuffer = await file.arrayBuffer();
     
-    // Enable better error handling with fake worker
-    pdfjs.GlobalWorkerOptions.workerSrc = '';  // Ensure fake worker is used
+    // Force using fake worker inside the function as well
+    if (typeof window !== 'undefined') {
+      pdfjs.GlobalWorkerOptions.workerSrc = '';
+    }
     
-    // Load the PDF document using PDF.js
-    const loadingTask = getDocument({ data: arrayBuffer, disableFontFace: true });
+    // Set minimal configuration for the document loading
+    const loadingTask = pdfjs.getDocument({
+      data: arrayBuffer,
+      disableFontFace: true,
+      disableRange: true,
+      disableStream: true,
+      isEvalSupported: false, // Disable JS evaluation
+      cMapUrl: undefined,
+      cMapPacked: false,
+    });
+    
     const pdf = await loadingTask.promise;
     
     console.log(`PDF loaded successfully with ${pdf.numPages} pages`);
@@ -124,15 +156,20 @@ ${fullText}
 export const generatePdfPreview = async (file: File): Promise<string> => {
   try {
     // Force using fake worker
-    pdfjs.GlobalWorkerOptions.workerSrc = '';
+    if (typeof window !== 'undefined') {
+      pdfjs.GlobalWorkerOptions.workerSrc = '';
+    }
     
     // Convert file to ArrayBuffer for PDF.js
     const arrayBuffer = await file.arrayBuffer();
     
     // Load the PDF document using PDF.js with simpler options
-    const loadingTask = getDocument({ 
+    const loadingTask = pdfjs.getDocument({ 
       data: arrayBuffer, 
       disableFontFace: true,
+      disableRange: true,
+      disableStream: true,
+      isEvalSupported: false,
       cMapUrl: undefined,
       cMapPacked: false
     });
