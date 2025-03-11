@@ -240,7 +240,20 @@ export default function CandidatesTable({
                   </td>
                   <td className="px-6 py-4">
                     <div className="text-sm text-gray-900">
-                      {candidate.analysis_json?.skillsMatched?.length > 0 ? (
+                      {candidate.analysis_json?.matchedSkills?.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {candidate.analysis_json.matchedSkills.slice(0, 3).map((skill: string, idx: number) => (
+                            <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                              {skill}
+                            </span>
+                          ))}
+                          {candidate.analysis_json.matchedSkills.length > 3 && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                              +{candidate.analysis_json.matchedSkills.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      ) : candidate.analysis_json?.skillsMatched?.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {candidate.analysis_json.skillsMatched.slice(0, 3).map((skill: string, idx: number) => (
                             <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
@@ -250,6 +263,19 @@ export default function CandidatesTable({
                           {candidate.analysis_json.skillsMatched.length > 3 && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
                               +{candidate.analysis_json.skillsMatched.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      ) : candidate.analysis_json?.analysis?.matchedSkills?.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {candidate.analysis_json.analysis.matchedSkills.slice(0, 3).map((skill: string, idx: number) => (
+                            <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                              {skill}
+                            </span>
+                          ))}
+                          {candidate.analysis_json.analysis.matchedSkills.length > 3 && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                              +{candidate.analysis_json.analysis.matchedSkills.length - 3}
                             </span>
                           )}
                         </div>
@@ -286,8 +312,12 @@ export default function CandidatesTable({
                   </td>
                   <td className="px-6 py-4">
                     <p className="text-sm text-gray-900 max-w-xs truncate">
-                      {candidate.analysis_json?.analysis || 
-                       candidate.analysis_json?.summary || 
+                      {typeof candidate.analysis_json?.analysis === 'string' ? 
+                        candidate.analysis_json.analysis : 
+                       typeof candidate.analysis_json?.summary === 'string' ? 
+                        candidate.analysis_json.summary : 
+                       candidate.analysis_json?.analysis?.summary ? 
+                        candidate.analysis_json.analysis.summary :
                        'No summary available'}
                     </p>
                   </td>
