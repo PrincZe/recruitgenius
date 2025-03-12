@@ -75,12 +75,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
               id,
               title,
               description
-            ),
-            evaluation_json,
-            summary,
-            strengths,
-            matched_skills,
-            development_areas
+            )
           `)
           .eq('id', candidateId)
           .maybeSingle();
@@ -127,11 +122,16 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
               .from('resume_evaluations')
               .select(`
                 *,
-                evaluation_json,
-                summary,
-                strengths,
-                matched_skills,
-                development_areas
+                resume:resume_id (
+                  id,
+                  file_name,
+                  file_url
+                ),
+                job_posting:job_posting_id (
+                  id,
+                  title,
+                  description
+                )
               `)
               .eq('resume_id', directCandidateData.resume_id)
               .maybeSingle();
@@ -139,36 +139,34 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             console.log('Linked evaluation query result:', { linkedEvaluation, linkedEvalError });
               
             if (!linkedEvalError && linkedEvaluation) {
-              // Check if evaluation_json is present
-              if (linkedEvaluation.evaluation_json) {
-                console.log('Found evaluation_json in linkedEvaluation');
+              // Check if analysis_json is present
+              if (linkedEvaluation.analysis_json) {
+                console.log('Found analysis_json in linkedEvaluation');
                 try {
-                  const parsedJson = typeof linkedEvaluation.evaluation_json === 'string' ?
-                    JSON.parse(linkedEvaluation.evaluation_json) : linkedEvaluation.evaluation_json;
+                  const parsedJson = typeof linkedEvaluation.analysis_json === 'string' ?
+                    JSON.parse(linkedEvaluation.analysis_json) : linkedEvaluation.analysis_json;
                   
-                  console.log('Parsed evaluation JSON:', parsedJson);
+                  console.log('Parsed analysis JSON:', parsedJson);
                   
                   // Merge evaluation data into candidate data
                   candidateData = { 
                     ...directCandidateData, 
                     ...linkedEvaluation,
-                    // Ensure evaluation_json is parsed if it's a string
-                    evaluation_json: parsedJson
+                    // Ensure analysis_json is parsed if it's a string
+                    analysis_json: parsedJson
                   };
                 } catch (jsonError) {
-                  console.error('Error parsing evaluation_json:', jsonError);
+                  console.error('Error parsing analysis_json:', jsonError);
                   candidateData = { 
                     ...directCandidateData, 
-                    ...linkedEvaluation,
-                    evaluation_json: null
+                    ...linkedEvaluation
                   };
                 }
               } else {
-                console.log('No evaluation_json found in linkedEvaluation');
+                console.log('No analysis_json found in linkedEvaluation');
                 candidateData = { 
                   ...directCandidateData, 
-                  ...linkedEvaluation,
-                  evaluation_json: null
+                  ...linkedEvaluation
                 };
               }
             }
@@ -176,21 +174,19 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
         } else {
           candidateData = evaluationData;
           
-          // Ensure evaluation_json is parsed if it's a string
-          if (evaluationData && evaluationData.evaluation_json) {
-            console.log('Found evaluation_json in evaluationData');
+          // Ensure analysis_json is parsed if it's a string
+          if (evaluationData && evaluationData.analysis_json) {
+            console.log('Found analysis_json in evaluationData');
             try {
-              candidateData.evaluation_json = typeof evaluationData.evaluation_json === 'string' ? 
-                JSON.parse(evaluationData.evaluation_json) : evaluationData.evaluation_json;
+              candidateData.analysis_json = typeof evaluationData.analysis_json === 'string' ? 
+                JSON.parse(evaluationData.analysis_json) : evaluationData.analysis_json;
               
-              console.log('Parsed evaluation JSON:', candidateData.evaluation_json);
+              console.log('Parsed analysis JSON:', candidateData.analysis_json);
             } catch (jsonError) {
-              console.error('Error parsing evaluation_json:', jsonError);
-              candidateData.evaluation_json = null;
+              console.error('Error parsing analysis_json:', jsonError);
             }
           } else {
-            console.log('No evaluation_json found in evaluationData');
-            candidateData.evaluation_json = null;
+            console.log('No analysis_json found in evaluationData');
           }
         }
         
@@ -213,20 +209,17 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
         console.log('Successfully loaded candidate data:', candidateData);
         
         // Log specific debug info for resume evaluation data
-        console.log('Resume evaluation JSON:', candidateData.evaluation_json);
+        console.log('Analysis JSON:', candidateData.analysis_json);
         
         // Log all keys and important fields in candidateData
         console.log('All candidateData keys:', Object.keys(candidateData));
-        console.log('Summary field:', candidateData.summary);
-        console.log('Strengths field:', candidateData.strengths);
-        console.log('Matched skills field:', candidateData.matched_skills);
-        console.log('Development areas field:', candidateData.development_areas);
         
-        if (candidateData.evaluation_json) {
-          console.log('Summary from evaluation:', candidateData.evaluation_json.summary);
-          console.log('Strengths from evaluation:', candidateData.evaluation_json.strengths);
-          console.log('Matched skills from evaluation:', candidateData.evaluation_json.matchedSkills);
-          console.log('Development areas from evaluation:', candidateData.evaluation_json.developmentAreas);
+        // Try to extract data from analysis_json
+        if (candidateData.analysis_json && candidateData.analysis_json.analysis) {
+          console.log('Summary from analysis:', candidateData.analysis_json.analysis.summary);
+          console.log('Strengths from analysis:', candidateData.analysis_json.analysis.strengths);
+          console.log('Matched skills from analysis:', candidateData.analysis_json.analysis.matchedSkills);
+          console.log('Development areas from analysis:', candidateData.analysis_json.analysis.developmentAreas);
         }
         
         setCandidate(candidateData);
@@ -436,6 +429,14 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
     const fetchRecordings = async () => {
       try {
         setLoadingRecordings(true);
+        
+        if (!candidate || !candidate.id) {
+          console.log('Cannot fetch recordings: candidate or candidate.id is missing');
+          setRecordings([]);
+          setLoadingRecordings(false);
+          return;
+        }
+        
         console.log('Fetching recordings for candidate ID:', candidateId);
         
         // Try to get recordings directly based on the URL candidate ID
@@ -743,12 +744,9 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
   
   // Extract analysis data AFTER confirming candidate exists
   const analysisJson = candidate.analysis_json || {};
-  // Parse the evaluation_json if it exists
-  const evaluationData = candidate.evaluation_json ? 
-    (typeof candidate.evaluation_json === 'string' ? 
-      JSON.parse(candidate.evaluation_json) : 
-      candidate.evaluation_json) : 
-    {};
+  
+  // Make sure we have the analysis field on analysisJson
+  const analysisData = analysisJson.analysis || {};
   
   // Render the candidate detail page
   return (
@@ -947,15 +945,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <h3 className="font-medium mb-2">Summary</h3>
               <p className="text-gray-700 text-sm">
-                {
-                  // Try to get the summary from different possible locations
-                  (evaluationData && evaluationData.summary) ? 
-                  evaluationData.summary : 
-                  (analysisJson && analysisJson.analysis && analysisJson.analysis.summary) ? 
-                  analysisJson.analysis.summary : 
-                  candidate.summary ? candidate.summary :
-                  'No summary available'
-                }
+                {analysisData.summary || 'No summary available'}
               </p>
             </div>
             
@@ -963,16 +953,8 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <h3 className="font-medium mb-2">Strengths</h3>
               <ul className="list-disc pl-5 text-gray-700 text-sm">
-                {(evaluationData && evaluationData.strengths && Array.isArray(evaluationData.strengths) && evaluationData.strengths.length > 0) ? (
-                  evaluationData.strengths.map((strength: string, index: number) => (
-                    <li key={index}>{strength}</li>
-                  ))
-                ) : (analysisJson && analysisJson.analysis && analysisJson.analysis.strengths && Array.isArray(analysisJson.analysis.strengths) && analysisJson.analysis.strengths.length > 0) ? (
-                  analysisJson.analysis.strengths.map((strength: string, index: number) => (
-                    <li key={index}>{strength}</li>
-                  ))
-                ) : (candidate.strengths && Array.isArray(candidate.strengths) && candidate.strengths.length > 0) ? (
-                  candidate.strengths.map((strength: string, index: number) => (
+                {(analysisData.strengths && Array.isArray(analysisData.strengths) && analysisData.strengths.length > 0) ? (
+                  analysisData.strengths.map((strength: string, index: number) => (
                     <li key={index}>{strength}</li>
                   ))
                 ) : (
@@ -985,16 +967,8 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <h3 className="font-medium mb-2">Development Areas</h3>
               <ul className="list-disc pl-5 text-gray-700 text-sm">
-                {(evaluationData && evaluationData.developmentAreas && Array.isArray(evaluationData.developmentAreas) && evaluationData.developmentAreas.length > 0) ? (
-                  evaluationData.developmentAreas.map((area: string, index: number) => (
-                    <li key={index}>{area}</li>
-                  ))
-                ) : (analysisJson && analysisJson.analysis && analysisJson.analysis.developmentAreas && Array.isArray(analysisJson.analysis.developmentAreas) && analysisJson.analysis.developmentAreas.length > 0) ? (
-                  analysisJson.analysis.developmentAreas.map((area: string, index: number) => (
-                    <li key={index}>{area}</li>
-                  ))
-                ) : (candidate.development_areas && Array.isArray(candidate.development_areas) && candidate.development_areas.length > 0) ? (
-                  candidate.development_areas.map((area: string, index: number) => (
+                {(analysisData.developmentAreas && Array.isArray(analysisData.developmentAreas) && analysisData.developmentAreas.length > 0) ? (
+                  analysisData.developmentAreas.map((area: string, index: number) => (
                     <li key={index}>{area}</li>
                   ))
                 ) : (
@@ -1007,20 +981,8 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <h3 className="font-medium mb-2">Matched Skills</h3>
               <div className="flex flex-wrap gap-2">
-                {(evaluationData && evaluationData.matchedSkills && Array.isArray(evaluationData.matchedSkills) && evaluationData.matchedSkills.length > 0) ? (
-                  evaluationData.matchedSkills.map((skill: string, index: number) => (
-                    <span key={index} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
-                      {skill}
-                    </span>
-                  ))
-                ) : (analysisJson && analysisJson.analysis && analysisJson.analysis.matchedSkills && Array.isArray(analysisJson.analysis.matchedSkills) && analysisJson.analysis.matchedSkills.length > 0) ? (
-                  analysisJson.analysis.matchedSkills.map((skill: string, index: number) => (
-                    <span key={index} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
-                      {skill}
-                    </span>
-                  ))
-                ) : (candidate.matched_skills && Array.isArray(candidate.matched_skills) && candidate.matched_skills.length > 0) ? (
-                  candidate.matched_skills.map((skill: string, index: number) => (
+                {(analysisData.matchedSkills && Array.isArray(analysisData.matchedSkills) && analysisData.matchedSkills.length > 0) ? (
+                  analysisData.matchedSkills.map((skill: string, index: number) => (
                     <span key={index} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
                       {skill}
                     </span>
