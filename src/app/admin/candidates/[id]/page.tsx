@@ -213,13 +213,16 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
         
         // Log all keys and important fields in candidateData
         console.log('All candidateData keys:', Object.keys(candidateData));
+        if (candidateData.analysis_json) {
+          console.log('All analysis_json keys:', Object.keys(candidateData.analysis_json));
+        }
         
         // Try to extract data from analysis_json
-        if (candidateData.analysis_json && candidateData.analysis_json.analysis) {
-          console.log('Summary from analysis:', candidateData.analysis_json.analysis.summary);
-          console.log('Strengths from analysis:', candidateData.analysis_json.analysis.strengths);
-          console.log('Matched skills from analysis:', candidateData.analysis_json.analysis.matchedSkills);
-          console.log('Development areas from analysis:', candidateData.analysis_json.analysis.developmentAreas);
+        if (candidateData.analysis_json) {
+          console.log('Summary from analysis_json:', candidateData.analysis_json.summary);
+          console.log('Strengths from analysis_json:', candidateData.analysis_json.strengths);
+          console.log('Matched skills from analysis_json:', candidateData.analysis_json.matchedSkills);
+          console.log('Development areas from analysis_json:', candidateData.analysis_json.developmentAreas);
         }
         
         setCandidate(candidateData);
@@ -700,13 +703,13 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
   // Determine if we need to show the Scan Resume button
   // Only show it if there's no analysis data or if the analysis is incomplete
   const needsRescan = !candidate?.resume?.analysis_json || 
-                     !candidate?.resume?.analysis_json?.analysis?.summary ||
-                     candidate?.resume?.analysis_json?.analysis?.summary?.includes('fallback') ||
-                     candidate?.resume?.analysis_json?.analysis?.summary?.includes('Using fallback evaluation');
+                     !candidate?.resume?.analysis_json?.summary ||
+                     candidate?.resume?.analysis_json?.summary?.includes('fallback') ||
+                     candidate?.resume?.analysis_json?.summary?.includes('Using fallback evaluation');
   
-  const hasFailedAnalysis = candidate?.resume?.analysis_json?.analysis?.summary?.includes('failed') ||
-                           candidate?.resume?.analysis_json?.analysis?.summary?.includes('ERROR') ||
-                           candidate?.resume?.analysis_json?.analysis?.summary?.includes('WARNING');
+  const hasFailedAnalysis = candidate?.resume?.analysis_json?.summary?.includes('failed') ||
+                           candidate?.resume?.analysis_json?.summary?.includes('ERROR') ||
+                           candidate?.resume?.analysis_json?.summary?.includes('WARNING');
   
   // Move these variable extractions inside the conditional block after checking if candidate exists
   
@@ -745,8 +748,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
   // Extract analysis data AFTER confirming candidate exists
   const analysisJson = candidate.analysis_json || {};
   
-  // Make sure we have the analysis field on analysisJson
-  const analysisData = analysisJson.analysis || {};
+  // The data is directly on the analysisJson object, not nested in an analysis property
   
   // Render the candidate detail page
   return (
@@ -945,7 +947,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <h3 className="font-medium mb-2">Summary</h3>
               <p className="text-gray-700 text-sm">
-                {analysisData.summary || 'No summary available'}
+                {analysisJson.summary || 'No summary available'}
               </p>
             </div>
             
@@ -953,8 +955,8 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <h3 className="font-medium mb-2">Strengths</h3>
               <ul className="list-disc pl-5 text-gray-700 text-sm">
-                {(analysisData.strengths && Array.isArray(analysisData.strengths) && analysisData.strengths.length > 0) ? (
-                  analysisData.strengths.map((strength: string, index: number) => (
+                {(analysisJson.strengths && Array.isArray(analysisJson.strengths) && analysisJson.strengths.length > 0) ? (
+                  analysisJson.strengths.map((strength: string, index: number) => (
                     <li key={index}>{strength}</li>
                   ))
                 ) : (
@@ -967,8 +969,8 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <h3 className="font-medium mb-2">Development Areas</h3>
               <ul className="list-disc pl-5 text-gray-700 text-sm">
-                {(analysisData.developmentAreas && Array.isArray(analysisData.developmentAreas) && analysisData.developmentAreas.length > 0) ? (
-                  analysisData.developmentAreas.map((area: string, index: number) => (
+                {(analysisJson.developmentAreas && Array.isArray(analysisJson.developmentAreas) && analysisJson.developmentAreas.length > 0) ? (
+                  analysisJson.developmentAreas.map((area: string, index: number) => (
                     <li key={index}>{area}</li>
                   ))
                 ) : (
@@ -981,8 +983,8 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <h3 className="font-medium mb-2">Matched Skills</h3>
               <div className="flex flex-wrap gap-2">
-                {(analysisData.matchedSkills && Array.isArray(analysisData.matchedSkills) && analysisData.matchedSkills.length > 0) ? (
-                  analysisData.matchedSkills.map((skill: string, index: number) => (
+                {(analysisJson.matchedSkills && Array.isArray(analysisJson.matchedSkills) && analysisJson.matchedSkills.length > 0) ? (
+                  analysisJson.matchedSkills.map((skill: string, index: number) => (
                     <span key={index} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
                       {skill}
                     </span>
