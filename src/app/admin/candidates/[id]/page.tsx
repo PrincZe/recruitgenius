@@ -607,6 +607,17 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
     }
   };
   
+  // Determine if we need to show the Scan Resume button
+  // Only show it if there's no analysis data or if the analysis is incomplete
+  const needsRescan = !candidate?.resume?.analysis_json || 
+                     !candidate?.resume?.analysis_json?.analysis?.summary ||
+                     candidate?.resume?.analysis_json?.analysis?.summary?.includes('fallback') ||
+                     candidate?.resume?.analysis_json?.analysis?.summary?.includes('Using fallback evaluation');
+  
+  const hasFailedAnalysis = candidate?.resume?.analysis_json?.analysis?.summary?.includes('failed') ||
+                           candidate?.resume?.analysis_json?.analysis?.summary?.includes('ERROR') ||
+                           candidate?.resume?.analysis_json?.analysis?.summary?.includes('WARNING');
+  
   if (loading) {
     return <LoadingState />;
   }
@@ -877,7 +888,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Resume Preview</h2>
           
-          {candidate?.resume?.id && (
+          {(candidate?.resume?.id && (needsRescan || hasFailedAnalysis)) && (
             <button
               onClick={handleScanResume}
               disabled={scanningResume}
@@ -895,7 +906,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
               ) : (
                 <span className="flex items-center">
                   <FileText className="h-4 w-4 mr-2" />
-                  Scan Resume
+                  {hasFailedAnalysis ? 'Retry Analysis' : 'Scan Resume'}
                 </span>
               )}
             </button>
@@ -911,6 +922,12 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
         {scanSuccess && (
           <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-md">
             <p className="text-sm font-medium">Resume successfully scanned and analyzed!</p>
+          </div>
+        )}
+        
+        {hasFailedAnalysis && !scanningResume && !scanSuccess && (
+          <div className="mb-4 p-3 bg-amber-50 text-amber-700 rounded-md">
+            <p className="text-sm font-medium">The previous analysis was not accurate. Please click "Retry Analysis" to generate a better result.</p>
           </div>
         )}
         

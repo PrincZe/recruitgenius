@@ -39,14 +39,43 @@ export const extractTextFromPdf = async (file: File): Promise<string> => {
     // Extract metadata from filename as fallback
     const candidateMetadata = extractCandidateMetadataFromFilename(file);
     
-    // Skip PDF.js extraction entirely and always use the fallback method
-    // This ensures consistent behavior and avoids PDF.js worker issues
-    console.log('Using fallback extraction method for reliability');
+    // Try to actually extract text from the PDF using PDF.js
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const typedArray = new Uint8Array(arrayBuffer);
+      
+      // Load the PDF document
+      const loadingTask = pdfjs.getDocument({ data: typedArray });
+      const pdf = await loadingTask.promise;
+      console.log(`PDF document loaded with ${pdf.numPages} pages`);
+      
+      // Extract text from each page
+      let extractedText = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map((item: any) => item.str).join(' ');
+        extractedText += pageText + '\n\n';
+      }
+      
+      if (extractedText.trim().length > 100) {
+        console.log(`Successfully extracted ${extractedText.length} characters of text from PDF`);
+        return extractedText;
+      } else {
+        console.warn('PDF text extraction yielded insufficient content, using fallback');
+      }
+    } catch (extractError) {
+      console.error('Error extracting PDF text with PDF.js:', extractError);
+    }
+    
+    // If we reached here, the extraction failed or yielded insufficient content
+    // Use the fallback method as a last resort
+    console.log('Using fallback extraction method due to extraction failure');
     const fallbackContent = generateFallbackContent(file, candidateMetadata);
     
-    // Simulate successful extraction to maintain compatibility with existing code
-    console.log(`Extracted ${fallbackContent.length} characters of text from PDF`);
-    return fallbackContent;
+    // Add warning to the fallback content
+    const warningText = "WARNING: ACTUAL PDF TEXT EXTRACTION FAILED. THIS IS SIMULATED CONTENT BASED ON FILENAME ONLY.\n\n";
+    return warningText + fallbackContent;
     
   } catch (error) {
     console.error('Error in extractTextFromPdf:', error);

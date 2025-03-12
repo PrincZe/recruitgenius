@@ -177,11 +177,12 @@ async function analyzeResumeWithOpenAI(resumeText: string, jobDescription: strin
   }
 
   console.log(`Analyzing resume against job description (first 50 chars): "${jobDescription.substring(0, 50)}..."`);
+  console.log(`Resume content first 100 chars: "${resumeText.substring(0, 100).replace(/\n/g, ' ')}..."`);
 
   try {
     // Prepare prompt with the actual extracted resume text and job description
     const prompt = `
-You are an AI recruiting assistant tasked with analyzing a candidate's resume against a job description.
+You are an AI recruiting assistant that excels at analyzing resumes against job descriptions.
 
 # JOB DESCRIPTION
 ${jobDescription}
@@ -190,17 +191,20 @@ ${jobDescription}
 ${resumeText}
 
 # ANALYSIS INSTRUCTIONS
-1. Analyze the resume content provided against the job description
-2. Provide an overall match score from 0-100
+1. Carefully analyze the resume content provided against the job description
+2. Provide an overall match score from 0-100, be accurate and realistic in your scoring
 3. For each dimension, score from 0-10:
    - Ownership: Takes initiative and accountability
    - Organization Impact: Makes meaningful contributions that benefit the organization
    - Independence: Works well with minimal supervision
    - Strategic Alignment: Aligns work with company goals
    - Skills Match: Technical and soft skills match the requirements
-4. Identify 3-5 key strengths based on the resume
-5. Identify 2-3 development areas or missing skills
-6. List the specific skills identified in the resume relevant to the position
+4. Write a factual, objective summary of the candidate's key qualifications
+5. Identify 3-5 key strengths based on the ACTUAL resume content (not generic statements)
+6. Identify 2-3 development areas or missing skills
+7. List the specific skills identified in the resume relevant to the position
+
+IMPORTANT: Your analysis must be ACCURATE and based ONLY on the resume content provided. Do NOT make up information or qualifications that aren't present in the resume.
 
 Return your analysis as valid JSON with the following structure:
 {
@@ -224,13 +228,14 @@ Ensure the JSON is valid and properly formatted.
 `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "gpt-3.5-turbo-1106", // Use a JSON mode capable model
       messages: [
-        { role: "system", content: "You are an AI assistant that provides resume evaluations against job descriptions in valid JSON format." },
+        { role: "system", content: "You are an AI assistant that provides resume evaluations against job descriptions. Your evaluations are accurate, factual, and based strictly on the resume content provided." },
         { role: "user", content: prompt }
       ],
-      temperature: 0.7,
+      temperature: 0.5, // Lower temperature for more consistent, factual responses
       max_tokens: 1500,
+      response_format: { type: "json_object" }, // Ensure JSON response
     });
 
     const responseText = response.choices[0]?.message?.content || '';
@@ -266,7 +271,8 @@ Ensure the JSON is valid and properly formatted.
       hasOverallScore: 'overallScore' in analysisData,
       hasDimensions: 'dimensions' in analysisData,
       hasAnalysis: 'analysis' in analysisData,
-      topLevelKeys: Object.keys(analysisData)
+      topLevelKeys: Object.keys(analysisData),
+      summary: analysisData.analysis?.summary?.substring(0, 100) + "..." || "No summary"
     });
 
     // Ensure the analysis has the correct structure
