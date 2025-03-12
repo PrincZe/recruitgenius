@@ -121,11 +121,26 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
               
             if (!linkedEvalError && linkedEvaluation) {
               // Merge evaluation data into candidate data
-              candidateData = { ...directCandidateData, ...linkedEvaluation };
+              candidateData = { 
+                ...directCandidateData, 
+                ...linkedEvaluation,
+                // Ensure evaluation_json is parsed if it's a string
+                evaluation_json: linkedEvaluation.evaluation_json ? 
+                  (typeof linkedEvaluation.evaluation_json === 'string' ? 
+                    JSON.parse(linkedEvaluation.evaluation_json) : 
+                    linkedEvaluation.evaluation_json) : 
+                  null
+              };
             }
           }
         } else {
           candidateData = evaluationData;
+          
+          // Ensure evaluation_json is parsed if it's a string
+          if (evaluationData.evaluation_json) {
+            candidateData.evaluation_json = typeof evaluationData.evaluation_json === 'string' ? 
+              JSON.parse(evaluationData.evaluation_json) : evaluationData.evaluation_json;
+          }
         }
         
         if (!candidateData) {
@@ -140,6 +155,16 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
         }
         
         console.log('Successfully loaded candidate data:', candidateData);
+        
+        // Log specific debug info for resume evaluation data
+        console.log('Resume evaluation JSON:', candidateData.evaluation_json);
+        if (candidateData.evaluation_json) {
+          console.log('Summary from evaluation:', candidateData.evaluation_json.summary);
+          console.log('Strengths from evaluation:', candidateData.evaluation_json.strengths);
+          console.log('Matched skills from evaluation:', candidateData.evaluation_json.matchedSkills);
+          console.log('Development areas from evaluation:', candidateData.evaluation_json.developmentAreas);
+        }
+        
         setCandidate(candidateData);
         
         // Check if this candidate already has an interview link
@@ -618,6 +643,15 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
                            candidate?.resume?.analysis_json?.analysis?.summary?.includes('ERROR') ||
                            candidate?.resume?.analysis_json?.analysis?.summary?.includes('WARNING');
   
+  // Extract analysis data
+  const analysisJson = candidate.analysis_json || {};
+  // Parse the evaluation_json if it exists
+  const evaluationData = candidate.evaluation_json ? 
+    (typeof candidate.evaluation_json === 'string' ? 
+      JSON.parse(candidate.evaluation_json) : 
+      candidate.evaluation_json) : 
+    {};
+  
   if (loading) {
     return <LoadingState />;
   }
@@ -649,9 +683,6 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
       </div>
     );
   }
-  
-  // Extract analysis data
-  const analysisJson = candidate.analysis_json || {};
   
   // Render the candidate detail page
   return (
@@ -820,6 +851,24 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
                 ></div>
               </div>
             </div>
+            
+            {/* Add Skills dimension */}
+            <div>
+              <div className="flex justify-between mb-1">
+                <span>Skills <span className="text-xs text-gray-500">L{candidate.skills_level || 4}</span></span>
+                <span>{candidate.skills_score !== null && candidate.skills_score !== undefined
+                  ? candidate.skills_score.toFixed(1)
+                  : 'N/A'}/10</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-blue-600 h-2 rounded-full"
+                  style={{ width: `${candidate.skills_score !== null && candidate.skills_score !== undefined
+                    ? Math.min(Math.max(candidate.skills_score * 10, 0), 100)
+                    : 0}%` }}
+                ></div>
+              </div>
+            </div>
           </div>
         </div>
         
@@ -832,7 +881,12 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <h3 className="font-medium mb-2">Summary</h3>
               <p className="text-gray-700 text-sm">
-                {analysisJson?.analysis?.summary || 'No summary available'}
+                {
+                  // Try to get the summary from different possible locations
+                  evaluationData.summary || 
+                  analysisJson?.analysis?.summary || 
+                  'No summary available'
+                }
               </p>
             </div>
             
@@ -840,7 +894,11 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <h3 className="font-medium mb-2">Strengths</h3>
               <ul className="list-disc pl-5 text-gray-700 text-sm">
-                {analysisJson?.analysis?.strengths ? (
+                {evaluationData.strengths ? (
+                  evaluationData.strengths.map((strength: string, index: number) => (
+                    <li key={index}>{strength}</li>
+                  ))
+                ) : analysisJson?.analysis?.strengths ? (
                   analysisJson.analysis.strengths.map((strength: string, index: number) => (
                     <li key={index}>{strength}</li>
                   ))
@@ -854,7 +912,11 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <h3 className="font-medium mb-2">Development Areas</h3>
               <ul className="list-disc pl-5 text-gray-700 text-sm">
-                {analysisJson?.analysis?.developmentAreas ? (
+                {evaluationData.developmentAreas ? (
+                  evaluationData.developmentAreas.map((area: string, index: number) => (
+                    <li key={index}>{area}</li>
+                  ))
+                ) : analysisJson?.analysis?.developmentAreas ? (
                   analysisJson.analysis.developmentAreas.map((area: string, index: number) => (
                     <li key={index}>{area}</li>
                   ))
@@ -868,7 +930,13 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <h3 className="font-medium mb-2">Matched Skills</h3>
               <div className="flex flex-wrap gap-2">
-                {analysisJson?.analysis?.matchedSkills ? (
+                {evaluationData.matchedSkills ? (
+                  evaluationData.matchedSkills.map((skill: string, index: number) => (
+                    <span key={index} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                      {skill}
+                    </span>
+                  ))
+                ) : analysisJson?.analysis?.matchedSkills ? (
                   analysisJson.analysis.matchedSkills.map((skill: string, index: number) => (
                     <span key={index} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
                       {skill}
