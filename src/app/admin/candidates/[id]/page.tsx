@@ -75,7 +75,12 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
               id,
               title,
               description
-            )
+            ),
+            evaluation_json,
+            summary,
+            strengths,
+            matched_skills,
+            development_areas
           `)
           .eq('id', candidateId)
           .maybeSingle();
@@ -120,7 +125,14 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
           if (directCandidateData.resume_id) {
             const { data: linkedEvaluation, error: linkedEvalError } = await supabase
               .from('resume_evaluations')
-              .select('*')
+              .select(`
+                *,
+                evaluation_json,
+                summary,
+                strengths,
+                matched_skills,
+                development_areas
+              `)
               .eq('resume_id', directCandidateData.resume_id)
               .maybeSingle();
             
@@ -202,6 +214,14 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
         
         // Log specific debug info for resume evaluation data
         console.log('Resume evaluation JSON:', candidateData.evaluation_json);
+        
+        // Log all keys and important fields in candidateData
+        console.log('All candidateData keys:', Object.keys(candidateData));
+        console.log('Summary field:', candidateData.summary);
+        console.log('Strengths field:', candidateData.strengths);
+        console.log('Matched skills field:', candidateData.matched_skills);
+        console.log('Development areas field:', candidateData.development_areas);
+        
         if (candidateData.evaluation_json) {
           console.log('Summary from evaluation:', candidateData.evaluation_json.summary);
           console.log('Strengths from evaluation:', candidateData.evaluation_json.strengths);
@@ -933,6 +953,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
                   evaluationData.summary : 
                   (analysisJson && analysisJson.analysis && analysisJson.analysis.summary) ? 
                   analysisJson.analysis.summary : 
+                  candidate.summary ? candidate.summary :
                   'No summary available'
                 }
               </p>
@@ -948,6 +969,10 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
                   ))
                 ) : (analysisJson && analysisJson.analysis && analysisJson.analysis.strengths && Array.isArray(analysisJson.analysis.strengths) && analysisJson.analysis.strengths.length > 0) ? (
                   analysisJson.analysis.strengths.map((strength: string, index: number) => (
+                    <li key={index}>{strength}</li>
+                  ))
+                ) : (candidate.strengths && Array.isArray(candidate.strengths) && candidate.strengths.length > 0) ? (
+                  candidate.strengths.map((strength: string, index: number) => (
                     <li key={index}>{strength}</li>
                   ))
                 ) : (
@@ -968,6 +993,10 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
                   analysisJson.analysis.developmentAreas.map((area: string, index: number) => (
                     <li key={index}>{area}</li>
                   ))
+                ) : (candidate.development_areas && Array.isArray(candidate.development_areas) && candidate.development_areas.length > 0) ? (
+                  candidate.development_areas.map((area: string, index: number) => (
+                    <li key={index}>{area}</li>
+                  ))
                 ) : (
                   <li>No development areas data available</li>
                 )}
@@ -986,6 +1015,12 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
                   ))
                 ) : (analysisJson && analysisJson.analysis && analysisJson.analysis.matchedSkills && Array.isArray(analysisJson.analysis.matchedSkills) && analysisJson.analysis.matchedSkills.length > 0) ? (
                   analysisJson.analysis.matchedSkills.map((skill: string, index: number) => (
+                    <span key={index} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                      {skill}
+                    </span>
+                  ))
+                ) : (candidate.matched_skills && Array.isArray(candidate.matched_skills) && candidate.matched_skills.length > 0) ? (
+                  candidate.matched_skills.map((skill: string, index: number) => (
                     <span key={index} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
                       {skill}
                     </span>
