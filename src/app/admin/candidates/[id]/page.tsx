@@ -56,6 +56,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
       try {
         setLoading(true);
         setError(null);
+        console.log('Fetching candidate with ID:', candidateId);
         
         // First check if the ID is for a resume_evaluation or a candidate
         let candidateData;
@@ -79,6 +80,8 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
           .eq('id', candidateId)
           .maybeSingle();
         
+        console.log('Evaluation data query result:', { evaluationData, evaluationError });
+        
         if (evaluationError) {
           console.error('Error fetching resume evaluation:', evaluationError);
           
@@ -95,6 +98,8 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             `)
             .eq('id', candidateId)
             .maybeSingle();
+        
+          console.log('Direct candidate query result:', { directCandidateData, directCandidateError });
             
           if (directCandidateError) {
             console.error('Error fetching direct candidate:', directCandidateError);
@@ -118,28 +123,62 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
               .select('*')
               .eq('resume_id', directCandidateData.resume_id)
               .maybeSingle();
+            
+            console.log('Linked evaluation query result:', { linkedEvaluation, linkedEvalError });
               
             if (!linkedEvalError && linkedEvaluation) {
-              // Merge evaluation data into candidate data
-              candidateData = { 
-                ...directCandidateData, 
-                ...linkedEvaluation,
-                // Ensure evaluation_json is parsed if it's a string
-                evaluation_json: linkedEvaluation.evaluation_json ? 
-                  (typeof linkedEvaluation.evaluation_json === 'string' ? 
-                    JSON.parse(linkedEvaluation.evaluation_json) : 
-                    linkedEvaluation.evaluation_json) : 
-                  null
-              };
+              // Check if evaluation_json is present
+              if (linkedEvaluation.evaluation_json) {
+                console.log('Found evaluation_json in linkedEvaluation');
+                try {
+                  const parsedJson = typeof linkedEvaluation.evaluation_json === 'string' ?
+                    JSON.parse(linkedEvaluation.evaluation_json) : linkedEvaluation.evaluation_json;
+                  
+                  console.log('Parsed evaluation JSON:', parsedJson);
+                  
+                  // Merge evaluation data into candidate data
+                  candidateData = { 
+                    ...directCandidateData, 
+                    ...linkedEvaluation,
+                    // Ensure evaluation_json is parsed if it's a string
+                    evaluation_json: parsedJson
+                  };
+                } catch (jsonError) {
+                  console.error('Error parsing evaluation_json:', jsonError);
+                  candidateData = { 
+                    ...directCandidateData, 
+                    ...linkedEvaluation,
+                    evaluation_json: null
+                  };
+                }
+              } else {
+                console.log('No evaluation_json found in linkedEvaluation');
+                candidateData = { 
+                  ...directCandidateData, 
+                  ...linkedEvaluation,
+                  evaluation_json: null
+                };
+              }
             }
           }
         } else {
           candidateData = evaluationData;
           
           // Ensure evaluation_json is parsed if it's a string
-          if (evaluationData.evaluation_json) {
-            candidateData.evaluation_json = typeof evaluationData.evaluation_json === 'string' ? 
-              JSON.parse(evaluationData.evaluation_json) : evaluationData.evaluation_json;
+          if (evaluationData && evaluationData.evaluation_json) {
+            console.log('Found evaluation_json in evaluationData');
+            try {
+              candidateData.evaluation_json = typeof evaluationData.evaluation_json === 'string' ? 
+                JSON.parse(evaluationData.evaluation_json) : evaluationData.evaluation_json;
+              
+              console.log('Parsed evaluation JSON:', candidateData.evaluation_json);
+            } catch (jsonError) {
+              console.error('Error parsing evaluation_json:', jsonError);
+              candidateData.evaluation_json = null;
+            }
+          } else {
+            console.log('No evaluation_json found in evaluationData');
+            candidateData.evaluation_json = null;
           }
         }
         
@@ -147,6 +186,11 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
           setError(`Candidate data not found for ID: ${candidateId}`);
           setLoading(false);
           return;
+        }
+        
+        // Initialize analysis_json if it doesn't exist to prevent errors
+        if (!candidateData.analysis_json) {
+          candidateData.analysis_json = {};
         }
         
         // Set the filename for display
@@ -643,14 +687,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
                            candidate?.resume?.analysis_json?.analysis?.summary?.includes('ERROR') ||
                            candidate?.resume?.analysis_json?.analysis?.summary?.includes('WARNING');
   
-  // Extract analysis data
-  const analysisJson = candidate.analysis_json || {};
-  // Parse the evaluation_json if it exists
-  const evaluationData = candidate.evaluation_json ? 
-    (typeof candidate.evaluation_json === 'string' ? 
-      JSON.parse(candidate.evaluation_json) : 
-      candidate.evaluation_json) : 
-    {};
+  // Move these variable extractions inside the conditional block after checking if candidate exists
   
   if (loading) {
     return <LoadingState />;
@@ -683,6 +720,15 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
       </div>
     );
   }
+  
+  // Extract analysis data AFTER confirming candidate exists
+  const analysisJson = candidate.analysis_json || {};
+  // Parse the evaluation_json if it exists
+  const evaluationData = candidate.evaluation_json ? 
+    (typeof candidate.evaluation_json === 'string' ? 
+      JSON.parse(candidate.evaluation_json) : 
+      candidate.evaluation_json) : 
+    {};
   
   // Render the candidate detail page
   return (
@@ -760,7 +806,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             </div>
             <div className="text-right">
               <span className="text-3xl font-bold">
-                {candidate.overall_score !== null && candidate.overall_score !== undefined
+                {candidate?.overall_score !== null && candidate?.overall_score !== undefined
                   ? candidate.overall_score.toFixed(0)
                   : 'N/A'}<span className="text-xl font-normal text-gray-500">/100</span>
               </span>
@@ -770,7 +816,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
           <div className="w-full bg-gray-200 rounded-full h-2.5 mb-6">
             <div
               className="bg-blue-600 h-2.5 rounded-full"
-              style={{ width: `${candidate.overall_score !== null && candidate.overall_score !== undefined 
+              style={{ width: `${candidate?.overall_score !== null && candidate?.overall_score !== undefined 
                 ? Math.min(Math.max(candidate.overall_score, 0), 100) 
                 : 0}%` }}
             ></div>
@@ -786,15 +832,15 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
           <div className="space-y-4">
             <div>
               <div className="flex justify-between mb-1">
-                <span>Ownership <span className="text-xs text-gray-500">L{candidate.ownership_level || 4}</span></span>
-                <span>{candidate.ownership_score !== null && candidate.ownership_score !== undefined
+                <span>Ownership <span className="text-xs text-gray-500">L{candidate?.ownership_level || 4}</span></span>
+                <span>{candidate?.ownership_score !== null && candidate?.ownership_score !== undefined
                   ? candidate.ownership_score.toFixed(1)
                   : 'N/A'}/10</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
                   className="bg-blue-600 h-2 rounded-full"
-                  style={{ width: `${candidate.ownership_score !== null && candidate.ownership_score !== undefined
+                  style={{ width: `${candidate?.ownership_score !== null && candidate?.ownership_score !== undefined
                     ? Math.min(Math.max(candidate.ownership_score * 10, 0), 100)
                     : 0}%` }}
                 ></div>
@@ -803,15 +849,15 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             
             <div>
               <div className="flex justify-between mb-1">
-                <span>Organization Impact <span className="text-xs text-gray-500">L{candidate.organization_impact_level || 4}</span></span>
-                <span>{candidate.organization_impact_score !== null && candidate.organization_impact_score !== undefined
+                <span>Organization Impact <span className="text-xs text-gray-500">L{candidate?.organization_impact_level || 4}</span></span>
+                <span>{candidate?.organization_impact_score !== null && candidate?.organization_impact_score !== undefined
                   ? candidate.organization_impact_score.toFixed(1)
                   : 'N/A'}/10</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
                   className="bg-blue-600 h-2 rounded-full"
-                  style={{ width: `${candidate.organization_impact_score !== null && candidate.organization_impact_score !== undefined
+                  style={{ width: `${candidate?.organization_impact_score !== null && candidate?.organization_impact_score !== undefined
                     ? Math.min(Math.max(candidate.organization_impact_score * 10, 0), 100)
                     : 0}%` }}
                 ></div>
@@ -820,15 +866,15 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             
             <div>
               <div className="flex justify-between mb-1">
-                <span>Independence <span className="text-xs text-gray-500">L{candidate.independence_level || 4}</span></span>
-                <span>{candidate.independence_score !== null && candidate.independence_score !== undefined
+                <span>Independence <span className="text-xs text-gray-500">L{candidate?.independence_level || 4}</span></span>
+                <span>{candidate?.independence_score !== null && candidate?.independence_score !== undefined
                   ? candidate.independence_score.toFixed(1)
                   : 'N/A'}/10</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
                   className="bg-blue-600 h-2 rounded-full"
-                  style={{ width: `${candidate.independence_score !== null && candidate.independence_score !== undefined
+                  style={{ width: `${candidate?.independence_score !== null && candidate?.independence_score !== undefined
                     ? Math.min(Math.max(candidate.independence_score * 10, 0), 100)
                     : 0}%` }}
                 ></div>
@@ -837,15 +883,15 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             
             <div>
               <div className="flex justify-between mb-1">
-                <span>Strategic Alignment <span className="text-xs text-gray-500">L{candidate.strategic_alignment_level || 4}</span></span>
-                <span>{candidate.strategic_alignment_score !== null && candidate.strategic_alignment_score !== undefined
+                <span>Strategic Alignment <span className="text-xs text-gray-500">L{candidate?.strategic_alignment_level || 4}</span></span>
+                <span>{candidate?.strategic_alignment_score !== null && candidate?.strategic_alignment_score !== undefined
                   ? candidate.strategic_alignment_score.toFixed(1)
                   : 'N/A'}/10</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
                   className="bg-blue-600 h-2 rounded-full"
-                  style={{ width: `${candidate.strategic_alignment_score !== null && candidate.strategic_alignment_score !== undefined
+                  style={{ width: `${candidate?.strategic_alignment_score !== null && candidate?.strategic_alignment_score !== undefined
                     ? Math.min(Math.max(candidate.strategic_alignment_score * 10, 0), 100)
                     : 0}%` }}
                 ></div>
@@ -855,15 +901,15 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             {/* Add Skills dimension */}
             <div>
               <div className="flex justify-between mb-1">
-                <span>Skills <span className="text-xs text-gray-500">L{candidate.skills_level || 4}</span></span>
-                <span>{candidate.skills_score !== null && candidate.skills_score !== undefined
+                <span>Skills <span className="text-xs text-gray-500">L{candidate?.skills_level || 4}</span></span>
+                <span>{candidate?.skills_score !== null && candidate?.skills_score !== undefined
                   ? candidate.skills_score.toFixed(1)
                   : 'N/A'}/10</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
                   className="bg-blue-600 h-2 rounded-full"
-                  style={{ width: `${candidate.skills_score !== null && candidate.skills_score !== undefined
+                  style={{ width: `${candidate?.skills_score !== null && candidate?.skills_score !== undefined
                     ? Math.min(Math.max(candidate.skills_score * 10, 0), 100)
                     : 0}%` }}
                 ></div>
@@ -883,8 +929,10 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
               <p className="text-gray-700 text-sm">
                 {
                   // Try to get the summary from different possible locations
-                  evaluationData.summary || 
-                  analysisJson?.analysis?.summary || 
+                  (evaluationData && evaluationData.summary) ? 
+                  evaluationData.summary : 
+                  (analysisJson && analysisJson.analysis && analysisJson.analysis.summary) ? 
+                  analysisJson.analysis.summary : 
                   'No summary available'
                 }
               </p>
@@ -894,11 +942,11 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <h3 className="font-medium mb-2">Strengths</h3>
               <ul className="list-disc pl-5 text-gray-700 text-sm">
-                {evaluationData.strengths ? (
+                {(evaluationData && evaluationData.strengths && Array.isArray(evaluationData.strengths) && evaluationData.strengths.length > 0) ? (
                   evaluationData.strengths.map((strength: string, index: number) => (
                     <li key={index}>{strength}</li>
                   ))
-                ) : analysisJson?.analysis?.strengths ? (
+                ) : (analysisJson && analysisJson.analysis && analysisJson.analysis.strengths && Array.isArray(analysisJson.analysis.strengths) && analysisJson.analysis.strengths.length > 0) ? (
                   analysisJson.analysis.strengths.map((strength: string, index: number) => (
                     <li key={index}>{strength}</li>
                   ))
@@ -912,11 +960,11 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <h3 className="font-medium mb-2">Development Areas</h3>
               <ul className="list-disc pl-5 text-gray-700 text-sm">
-                {evaluationData.developmentAreas ? (
+                {(evaluationData && evaluationData.developmentAreas && Array.isArray(evaluationData.developmentAreas) && evaluationData.developmentAreas.length > 0) ? (
                   evaluationData.developmentAreas.map((area: string, index: number) => (
                     <li key={index}>{area}</li>
                   ))
-                ) : analysisJson?.analysis?.developmentAreas ? (
+                ) : (analysisJson && analysisJson.analysis && analysisJson.analysis.developmentAreas && Array.isArray(analysisJson.analysis.developmentAreas) && analysisJson.analysis.developmentAreas.length > 0) ? (
                   analysisJson.analysis.developmentAreas.map((area: string, index: number) => (
                     <li key={index}>{area}</li>
                   ))
@@ -930,13 +978,13 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
             <div>
               <h3 className="font-medium mb-2">Matched Skills</h3>
               <div className="flex flex-wrap gap-2">
-                {evaluationData.matchedSkills ? (
+                {(evaluationData && evaluationData.matchedSkills && Array.isArray(evaluationData.matchedSkills) && evaluationData.matchedSkills.length > 0) ? (
                   evaluationData.matchedSkills.map((skill: string, index: number) => (
                     <span key={index} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
                       {skill}
                     </span>
                   ))
-                ) : analysisJson?.analysis?.matchedSkills ? (
+                ) : (analysisJson && analysisJson.analysis && analysisJson.analysis.matchedSkills && Array.isArray(analysisJson.analysis.matchedSkills) && analysisJson.analysis.matchedSkills.length > 0) ? (
                   analysisJson.analysis.matchedSkills.map((skill: string, index: number) => (
                     <span key={index} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
                       {skill}
