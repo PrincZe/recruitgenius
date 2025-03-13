@@ -6,6 +6,7 @@ import TextToSpeech from '@/components/TextToSpeech';
 import VoiceRecorder from '@/components/VoiceRecorder';
 import { v4 as uuidv4 } from 'uuid';
 import { getSessionById, getQuestions, getQuestionById } from '@/lib/services/supabaseService';
+import Link from 'next/link';
 
 // Demo questions to use if none exist in Supabase
 const demoQuestions = [
@@ -463,36 +464,44 @@ export default function InterviewQuestionsClient({ params }: { params: { session
 
   if (isCompleted) {
     return (
-      <div className="flex flex-col justify-center items-center min-h-screen p-4">
-        <div className="bg-green-50 border border-green-200 text-green-800 rounded-lg p-4 max-w-md text-center">
-          <h3 className="text-lg font-medium mb-2">Interview Completed</h3>
-          <p>Thank you for completing the interview. Your responses have been recorded.</p>
-          <button 
-            onClick={() => window.location.href = '/interview'}
-            className="mt-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-          >
-            Return to Start
-          </button>
+      <div className="flex flex-col items-center justify-center bg-white shadow-md rounded-lg p-8 text-center">
+        <div className="text-green-500 mb-4">
+          <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
         </div>
+        <h2 className="text-2xl font-bold mb-2 text-gray-900">Interview Complete!</h2>
+        <p className="text-gray-700 mb-6">Thank you for completing your interview. Your responses have been recorded.</p>
+        <Link href="/" className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+          Return to Home
+        </Link>
       </div>
     );
   }
 
   return (
     <div className="max-w-4xl mx-auto p-4 min-h-screen flex flex-col">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold mb-2">Interview Question {questionIndex + 1}</h1>
-        <div className="h-2 bg-gray-200 rounded-full mb-4">
-          <div 
-            className="h-2 bg-blue-600 rounded-full" 
-            style={{ width: `${((questionIndex + 1) / (session?.questions.length || 1)) * 100}%` }}
-          ></div>
+      <div className="bg-white shadow-md rounded-lg p-6 mb-6">
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-semibold text-gray-900">Question {questionIndex + 1} of {session?.questions?.length || 0}</h3>
+          
+          <div className="flex space-x-2 items-center">
+            <span className="text-sm text-gray-900">
+              {Math.round(((questionIndex + 1) / (session?.questions.length || 1)) * 100)}% Complete
+            </span>
+            <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-blue-600 rounded-full" 
+                style={{ width: `${Math.round(((questionIndex + 1) / (session?.questions.length || 1)) * 100)}%` }}
+              ></div>
+            </div>
+          </div>
         </div>
       </div>
 
       {currentQuestion && session && (
         <div className="bg-white shadow-md rounded-lg p-6 mb-6 flex-grow">
-          <h2 className="text-xl font-semibold mb-4">{currentQuestion.text}</h2>
+          <h2 className="text-xl font-semibold mb-4 text-gray-900">{currentQuestion.text}</h2>
           
           {currentQuestion.category && (
             <div className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded mb-4">
@@ -530,7 +539,7 @@ export default function InterviewQuestionsClient({ params }: { params: { session
           </div>
           
           <div className="mb-6">
-            <h3 className="text-lg font-medium mb-2">Your Response</h3>
+            <h3 className="text-lg font-medium mb-2 text-gray-900">Your Response</h3>
             <VoiceRecorder 
               questionId={currentQuestion.id}
               candidateId={session.candidateId}
@@ -544,7 +553,11 @@ export default function InterviewQuestionsClient({ params }: { params: { session
         <button
           onClick={handlePreviousQuestion}
           disabled={questionIndex === 0}
-          className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          className={`px-6 py-3 rounded-lg ${
+            questionIndex === 0
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : 'bg-gray-600 text-white hover:bg-gray-700'
+          }`}
         >
           Previous Question
         </button>
@@ -552,14 +565,26 @@ export default function InterviewQuestionsClient({ params }: { params: { session
         <button
           onClick={handleNextQuestion}
           disabled={!recordingSubmitted}
-          className={`px-4 py-2 border border-transparent rounded-md text-white ${
-            questionIndex === (session?.questions.length || 0) - 1 
-              ? 'bg-green-600 hover:bg-green-700' 
-              : 'bg-blue-600 hover:bg-blue-700'
+          className={`px-6 py-3 rounded-lg ${
+            questionIndex === (session?.questions.length || 0) - 1
+              ? 'bg-green-600 text-white hover:bg-green-700'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
           } disabled:opacity-50 disabled:cursor-not-allowed`}
         >
           {questionIndex === (session?.questions.length || 0) - 1 ? 'Complete Interview' : 'Next Question'}
         </button>
+      </div>
+
+      {/* Instructions */}
+      <div className="bg-white shadow-md rounded-lg p-6 mb-6">
+        <h3 className="text-lg font-semibold mb-2 text-gray-900">Interview Instructions</h3>
+        <ul className="list-disc pl-5 space-y-2 text-gray-900">
+          <li>Answer each question naturally as you would in a real interview.</li>
+          <li>Speak clearly and at a normal pace.</li>
+          <li>You can re-record your answer if needed.</li>
+          <li>Once you've recorded your answer, click Next to continue.</li>
+          <li>You cannot return to previous questions after submitting.</li>
+        </ul>
       </div>
     </div>
   );
