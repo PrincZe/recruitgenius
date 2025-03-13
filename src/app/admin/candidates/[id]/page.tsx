@@ -549,7 +549,109 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
         }
       }
       
-      // 4. Last attempt - let's check if there are any sessions for this candidate
+      // 4. Try to find recordings by resume_id if available
+      if (candidate.resume_id) {
+        console.log(`Trying resume ID: ${candidate.resume_id}`);
+        
+        // First, try to find candidates with this resume_id
+        const { data: candidatesWithResume, error: resumeError } = await supabase
+          .from('candidates')
+          .select('id')
+          .eq('resume_id', candidate.resume_id);
+        
+        if (resumeError) {
+          console.error('Error finding candidates with resume_id:', resumeError);
+        } else if (candidatesWithResume && candidatesWithResume.length > 0) {
+          console.log(`Found ${candidatesWithResume.length} candidates with this resume_id:`, 
+            candidatesWithResume.map(c => c.id).join(', '));
+          
+          // Look for recordings from any of these candidates
+          const candidateIds = candidatesWithResume.map(c => c.id);
+          const { data: resumeRecordings, error: multiCandidateError } = await supabase
+            .from('recordings')
+            .select('*')
+            .in('candidate_id', candidateIds)
+            .order('created_at', { ascending: true });
+          
+          console.log(`Query 4 - Candidates with resume ID (${candidate.resume_id}):`, { 
+            candidates: candidateIds,
+            found: resumeRecordings?.length || 0, 
+            error: multiCandidateError ? multiCandidateError.message : null 
+          });
+          
+          if (resumeRecordings && resumeRecordings.length > 0) {
+            console.log(`Found ${resumeRecordings.length} recordings via resume_id`);
+            setRecordings(resumeRecordings);
+            await fetchQuestionsForRecordings(resumeRecordings);
+            setLoadingRecordings(false);
+            return;
+          }
+        }
+      }
+      
+      // 5. Look for recordings in Supabase storage that may not be in the database
+      console.log('Checking Supabase storage for recordings...');
+      
+      try {
+        // Generate a path pattern that might match this candidate
+        // Format: recordings/{candidateId}/* or recordings/candidate_{candidateId}/*
+        const { data: storageFiles, error: storageError } = await supabase
+          .storage
+          .from('recordings')
+          .list();
+          
+        if (storageError) {
+          console.error('Error listing storage files:', storageError);
+        } else if (storageFiles && storageFiles.length > 0) {
+          console.log(`Found ${storageFiles.length} files in storage:`, 
+            storageFiles.slice(0, 10).map(f => f.name).join(', ') + 
+            (storageFiles.length > 10 ? '...' : ''));
+          
+          // Look for files that might contain this candidate's ID or resume ID
+          const candidatePattern = new RegExp(`${candidateId}|${candidate.resume_id}`);
+          const matchingFiles = storageFiles.filter(file => 
+            candidatePattern.test(file.name) || 
+            (file.metadata && candidatePattern.test(JSON.stringify(file.metadata)))
+          );
+          
+          if (matchingFiles.length > 0) {
+            console.log(`Found ${matchingFiles.length} matching files in storage:`, 
+              matchingFiles.map(f => f.name).join(', '));
+              
+            // Create records for these files if they're not in the database already
+            const newRecordings = [];
+            
+            for (const file of matchingFiles) {
+              // Get a signed URL for the file
+              const { data: signedUrlData } = await supabase
+                .storage
+                .from('recordings')
+                .createSignedUrl(file.name, 60 * 60); // 1 hour expiry
+              
+              if (signedUrlData) {
+                newRecordings.push({
+                  id: file.id || uuidv4(),
+                  candidate_id: candidateId,
+                  audio_url: signedUrlData.signedUrl,
+                  created_at: file.created_at || new Date().toISOString(),
+                  file_name: file.name
+                });
+              }
+            }
+            
+            if (newRecordings.length > 0) {
+              console.log(`Created ${newRecordings.length} recording entries from storage files`);
+              setRecordings(newRecordings);
+              setLoadingRecordings(false);
+              return;
+            }
+          }
+        }
+      } catch (storageError) {
+        console.error('Error processing storage files:', storageError);
+      }
+        
+      // 6. Last attempt - let's check if there are any sessions for this candidate
       // and try to find recordings via those sessions
       console.log('Trying to find sessions for this candidate...');
       
@@ -573,7 +675,7 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
           .in('session_id', sessionIds)
           .order('created_at', { ascending: true });
         
-        console.log(`Query 4 - Multiple Sessions:`, { 
+        console.log(`Query 6 - Multiple Sessions:`, { 
           sessions: sessionIds,
           found: sessionRecordings?.length || 0, 
           error: multiSessionError ? multiSessionError.message : null 
@@ -611,7 +713,8 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
   
   // Helper function to fetch questions for a set of recordings
   const fetchQuestionsForRecordings = async (recordingsData: any[]) => {
-    const questionIds = recordingsData?.map(r => r.question_id) || [];
+    // Extract question IDs, accounting for different field names
+    const questionIds = recordingsData?.map(r => r.question_id || r.questionId).filter(Boolean) || [];
     
     if (questionIds.length > 0) {
       // Get unique question IDs
@@ -637,6 +740,8 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
         console.log('Questions map created:', Object.keys(questionsMap).length);
         setQuestions(questionsMap);
       }
+    } else {
+      console.log('No question IDs found in recordings');
     }
   };
   
@@ -679,16 +784,41 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
           rec.id === recordingId 
             ? {
                 ...rec,
+                // Support both snake_case and camelCase field names
                 transcript: data.transcript,
                 sentiment_score: data.sentimentScore,
+                sentimentScore: data.sentimentScore,
                 sentiment_type: data.sentimentType,
+                sentimentType: data.sentimentType,
                 summary: data.summary,
                 topics: data.topics,
-                is_processed: true
+                is_processed: true,
+                isProcessed: true
               }
             : rec
         )
       );
+      
+      // Also update the recording in the database with consistent field names
+      try {
+        const { error: updateError } = await supabase
+          .from('recordings')
+          .update({
+            transcript: data.transcript,
+            sentiment_score: data.sentimentScore,
+            sentiment_type: data.sentimentType,
+            summary: data.summary,
+            topics: data.topics,
+            is_processed: true
+          })
+          .eq('id', recordingId);
+          
+        if (updateError) {
+          console.error('Error updating recording in database:', updateError);
+        }
+      } catch (dbError) {
+        console.error('Failed to update recording in database:', dbError);
+      }
       
       // Set success state
       setProcessingSuccess(prev => ({ ...prev, [recordingId]: true }));
@@ -1127,15 +1257,109 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold text-gray-900">Interview Recordings</h2>
-            <button
-              onClick={fetchRecordings}
-              className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-              </svg>
-              Refresh
-            </button>
+            <div className="flex space-x-2">
+              <button
+                onClick={fetchRecordings}
+                className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                Refresh
+              </button>
+              <button
+                onClick={async () => {
+                  // This will run a manual check of storage files and create database entries
+                  setLoadingRecordings(true);
+                  
+                  try {
+                    console.log('Manually checking Supabase storage for recordings...');
+                    
+                    // List all files in the recordings storage bucket
+                    const { data: storageFiles, error: storageError } = await supabase
+                      .storage
+                      .from('recordings')
+                      .list();
+                      
+                    if (storageError) throw storageError;
+                    
+                    if (!storageFiles || storageFiles.length === 0) {
+                      console.log('No files found in storage');
+                      alert('No recordings found in storage.');
+                      setLoadingRecordings(false);
+                      return;
+                    }
+                    
+                    console.log(`Found ${storageFiles.length} files in storage`);
+                    
+                    // For each file, create a database entry if it doesn't exist
+                    const newRecordings = [];
+                    
+                    for (const file of storageFiles) {
+                      // Get a signed URL for the file
+                      const { data: signedUrlData } = await supabase
+                        .storage
+                        .from('recordings')
+                        .createSignedUrl(file.name, 60 * 60); // 1 hour expiry
+                      
+                      if (signedUrlData) {
+                        // Check if a recording with this filename already exists
+                        const { data: existingRecord } = await supabase
+                          .from('recordings')
+                          .select('id')
+                          .eq('audio_url', signedUrlData.signedUrl)
+                          .maybeSingle();
+                          
+                        if (!existingRecord) {
+                          // No existing record, create a new one
+                          const newRecordingId = uuidv4();
+                          const { error: insertError } = await supabase
+                            .from('recordings')
+                            .insert({
+                              id: newRecordingId,
+                              candidate_id: candidateId,
+                              audio_url: signedUrlData.signedUrl,
+                              created_at: file.created_at || new Date().toISOString(),
+                              is_processed: false
+                            });
+                            
+                          if (insertError) {
+                            console.error('Error creating recording entry:', insertError);
+                          } else {
+                            newRecordings.push({
+                              id: newRecordingId,
+                              audio_url: signedUrlData.signedUrl,
+                              created_at: file.created_at || new Date().toISOString(),
+                              candidate_id: candidateId,
+                              is_processed: false
+                            });
+                          }
+                        }
+                      }
+                    }
+                    
+                    // Refresh the recordings list
+                    if (newRecordings.length > 0) {
+                      alert(`Created ${newRecordings.length} new recording entries from storage.`);
+                      await fetchRecordings();
+                    } else {
+                      alert('No new recordings were found to import.');
+                      setLoadingRecordings(false);
+                    }
+                  } catch (error) {
+                    console.error('Error syncing recordings:', error);
+                    alert(`Error syncing recordings: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                    setLoadingRecordings(false);
+                  }
+                }}
+                className="inline-flex items-center px-3 py-1.5 border border-blue-300 shadow-sm text-sm leading-4 font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
+                </svg>
+                Sync Storage Files
+              </button>
+            </div>
           </div>
           
           {loadingRecordings ? (
@@ -1152,21 +1376,24 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
                 >
                   <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
                     <div className="font-medium text-gray-900">
-                      {questions[recording.questionId]?.text || 'Question not found'}
+                      {questions[recording.question_id || recording.questionId]?.text || 'Question not found'}
                     </div>
                     <div className="text-xs text-gray-500">
-                      {formatDate(recording.createdAt)}
+                      {formatDate(recording.created_at || recording.createdAt || new Date().toISOString())}
                     </div>
                   </div>
                   <div className="p-4">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="flex-1">
-                        {recording.audioUrl ? (
+                        {(recording.audio_url || recording.audioUrl) ? (
                           <audio 
                             controls 
                             className="w-full"
                           >
-                            <source src={recording.audioUrl} type="audio/webm" />
+                            <source src={recording.audio_url || recording.audioUrl} type="audio/webm" />
+                            <source src={recording.audio_url || recording.audioUrl} type="audio/mp3" />
+                            <source src={recording.audio_url || recording.audioUrl} type="audio/mpeg" />
+                            <source src={recording.audio_url || recording.audioUrl} type="audio/wav" />
                             Your browser does not support the audio element.
                           </audio>
                         ) : (
@@ -1177,14 +1404,14 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
                       </div>
                       
                       <div className="flex items-center space-x-2">
-                        {recording.transcript ? (
+                        {(recording.transcript) ? (
                           <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                             <CheckCircle className="h-3 w-3 mr-1" />
                             Transcribed
                           </div>
                         ) : (
                           <button
-                            onClick={() => handleProcessRecording(recording.id, recording.audioUrl)}
+                            onClick={() => handleProcessRecording(recording.id, recording.audio_url || recording.audioUrl)}
                             disabled={processingRecordings[recording.id]}
                             className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
@@ -1210,9 +1437,9 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
                       <div className="mt-4 border-t border-gray-200 pt-4">
                         <div className="flex items-center mb-2">
                           <h3 className="text-sm font-medium text-gray-900">Transcript</h3>
-                          {recording.sentimentType && (
+                          {(recording.sentiment_type || recording.sentimentType) && (
                             <div className="ml-2">
-                              {renderSentimentType(recording.sentimentType)}
+                              {renderSentimentType(recording.sentiment_type || recording.sentimentType)}
                             </div>
                           )}
                         </div>
@@ -1238,29 +1465,72 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
               <p className="text-gray-500 mb-4">
                 This candidate hasn't completed any interview questions yet.
               </p>
-              {!interviewLink ? (
+              
+              <div className="space-y-3">
+                {!interviewLink ? (
+                  <button
+                    onClick={generateInterviewLink}
+                    disabled={generatingLink}
+                    className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    {generatingLink ? (
+                      <>
+                        <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                        Generating Link...
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="h-4 w-4 mr-2" />
+                        Generate Interview Link
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <div className="text-sm text-gray-700">
+                    Share the interview link with the candidate to start the interview process.
+                  </div>
+                )}
+                
                 <button
-                  onClick={generateInterviewLink}
-                  disabled={generatingLink}
-                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  onClick={async () => {
+                    try {
+                      // Create a test recording entry for this candidate
+                      const newRecordingId = uuidv4();
+                      const testAudioUrl = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+                      
+                      const { error: insertError } = await supabase
+                        .from('recordings')
+                        .insert({
+                          id: newRecordingId,
+                          candidate_id: candidateId,
+                          audio_url: testAudioUrl,
+                          transcript: 'This is a test recording entry to verify that the recordings display works correctly.',
+                          created_at: new Date().toISOString(),
+                          is_processed: true,
+                          sentiment_type: 'neutral',
+                          sentiment_score: 0
+                        });
+                        
+                      if (insertError) {
+                        console.error('Error creating test recording entry:', insertError);
+                        alert(`Error creating test recording: ${insertError.message}`);
+                      } else {
+                        alert('Test recording created successfully.');
+                        await fetchRecordings();
+                      }
+                    } catch (error) {
+                      console.error('Error creating test recording:', error);
+                      alert(`Error creating test recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                    }
+                  }}
+                  className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
-                  {generatingLink ? (
-                    <>
-                      <Loader2 className="animate-spin h-4 w-4 mr-2" />
-                      Generating Link...
-                    </>
-                  ) : (
-                    <>
-                      <Mic className="h-4 w-4 mr-2" />
-                      Generate Interview Link
-                    </>
-                  )}
+                  <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                  </svg>
+                  Create Test Recording
                 </button>
-              ) : (
-                <div className="text-sm text-gray-700">
-                  Share the interview link with the candidate to start the interview process.
-                </div>
-              )}
+              </div>
             </div>
           )}
         </div>
