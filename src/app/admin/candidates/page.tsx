@@ -177,11 +177,10 @@ export default function CandidatesDashboard() {
     const completed = evaluations.filter(e => e.selected_for_interview).length;
     const pending = total - completed;
     
-    // Calculate confidence levels
-    // Convert the 1-5 scale to percentages (1=20%, 5=100%)
-    const high = evaluations.filter(e => e.overall_score >= 4).length;
-    const medium = evaluations.filter(e => e.overall_score >= 3 && e.overall_score < 4).length;
-    const low = evaluations.filter(e => e.overall_score < 3).length;
+    // Calculate confidence levels using overall_score as a percentage (0-100)
+    const high = evaluations.filter(e => e.overall_score >= 80).length;
+    const medium = evaluations.filter(e => e.overall_score >= 60 && e.overall_score < 80).length;
+    const low = evaluations.filter(e => e.overall_score < 60).length;
     
     // Calculate weekly submissions (mock data for demo)
     // In a real application, this would come from actual submission timestamps

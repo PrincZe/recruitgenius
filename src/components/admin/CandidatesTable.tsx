@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ChevronDown, FileText, Edit, Eye, Mic, CheckCircle, AlertCircle } from 'lucide-react';
+import { ChevronDown, FileText, Edit, Eye, Mic, CheckCircle, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 
 interface Candidate {
@@ -50,6 +50,31 @@ export default function CandidatesTable({
 }: CandidatesTableProps) {
   const [remarks, setRemarks] = useState<Record<string, string>>({});
   const [savingRemarks, setSavingRemarks] = useState<Record<string, boolean>>({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const candidatesPerPage = 5;
+  
+  // Calculate pagination
+  const indexOfLastCandidate = currentPage * candidatesPerPage;
+  const indexOfFirstCandidate = indexOfLastCandidate - candidatesPerPage;
+  const currentCandidates = candidates.slice(indexOfFirstCandidate, indexOfLastCandidate);
+  const totalPages = Math.ceil(candidates.length / candidatesPerPage);
+  
+  // Page change handlers
+  const goToNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+  
+  const goToPreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+  
+  const goToPage = (pageNumber: number) => {
+    setCurrentPage(pageNumber);
+  };
   
   const handleRemarksChange = (id: string, value: string) => {
     setRemarks(prev => ({
@@ -169,7 +194,7 @@ export default function CandidatesTable({
                 Candidate
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Interview Date
+                Resume Submitted Date
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Score
@@ -199,7 +224,7 @@ export default function CandidatesTable({
                 </td>
               </tr>
             ) : (
-              candidates.map((candidate) => (
+              currentCandidates.map((candidate) => (
                 <tr 
                   key={candidate.id} 
                   className={selectedCandidates.includes(candidate.id) ? 'bg-blue-50' : ''}
@@ -229,7 +254,7 @@ export default function CandidatesTable({
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatDate(candidate.interview_date || candidate.created_at)}
+                    {formatDate(candidate.created_at)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getScoreClass(candidate.overall_score)}`}>
@@ -382,6 +407,140 @@ export default function CandidatesTable({
           </tbody>
         </table>
       </div>
+      
+      {/* Pagination controls */}
+      {candidates.length > 0 && (
+        <div className="px-6 py-4 flex items-center justify-between border-t border-gray-200">
+          <div className="flex-1 flex justify-between sm:hidden">
+            <button
+              onClick={goToPreviousPage}
+              disabled={currentPage === 1}
+              className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <button
+              onClick={goToNextPage}
+              disabled={currentPage === totalPages}
+              className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+          <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm text-gray-700">
+                Showing <span className="font-medium">{indexOfFirstCandidate + 1}</span> to <span className="font-medium">
+                  {Math.min(indexOfLastCandidate, candidates.length)}
+                </span> of <span className="font-medium">{candidates.length}</span> candidates
+              </p>
+            </div>
+            <div>
+              <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                <button
+                  onClick={goToPreviousPage}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="sr-only">Previous</span>
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                
+                {/* Page numbers */}
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  // Show first, last, current and adjacent pages
+                  let pageNum;
+                  if (totalPages <= 5) {
+                    // Show all pages if 5 or fewer
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    // At the beginning
+                    if (i < 4) {
+                      pageNum = i + 1;
+                    } else {
+                      pageNum = totalPages;
+                    }
+                  } else if (currentPage >= totalPages - 2) {
+                    // At the end
+                    if (i === 0) {
+                      pageNum = 1;
+                    } else {
+                      pageNum = totalPages - 4 + i;
+                    }
+                  } else {
+                    // In the middle
+                    if (i === 0) {
+                      pageNum = 1;
+                    } else if (i === 4) {
+                      pageNum = totalPages;
+                    } else {
+                      pageNum = currentPage - 1 + i;
+                    }
+                  }
+                  
+                  // If we're not showing consecutive pages, add an ellipsis
+                  if (i === 0 && pageNum !== 1) {
+                    return (
+                      <React.Fragment key={`page-${pageNum}`}>
+                        <button
+                          onClick={() => goToPage(1)}
+                          className={`relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium ${
+                            currentPage === 1 ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          1
+                        </button>
+                        <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+                          ...
+                        </span>
+                      </React.Fragment>
+                    );
+                  }
+                  
+                  if (i === 4 && pageNum !== totalPages) {
+                    return (
+                      <React.Fragment key={`page-${pageNum}`}>
+                        <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+                          ...
+                        </span>
+                        <button
+                          onClick={() => goToPage(totalPages)}
+                          className={`relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium ${
+                            currentPage === totalPages ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          {totalPages}
+                        </button>
+                      </React.Fragment>
+                    );
+                  }
+                  
+                  return (
+                    <button
+                      key={`page-${pageNum}`}
+                      onClick={() => goToPage(pageNum)}
+                      className={`relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium ${
+                        currentPage === pageNum ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+                
+                <button
+                  onClick={goToNextPage}
+                  disabled={currentPage === totalPages}
+                  className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="sr-only">Next</span>
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              </nav>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 
