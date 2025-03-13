@@ -461,40 +461,138 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
     try {
       setLoadingRecordings(true);
       
-      if (!candidate || !candidate.id) {
-        console.log('Cannot fetch recordings: candidate or candidate.id is missing');
+      if (!candidate) {
+        console.log('Cannot fetch recordings: candidate is missing');
         setRecordings([]);
         setLoadingRecordings(false);
         return;
       }
       
       console.log('Fetching recordings for candidate ID:', candidateId);
+      console.log('Candidate data:', {
+        id: candidate.id,
+        candidateObject: candidate.candidate ? { id: candidate.candidate.id, name: candidate.candidate.name } : null,
+        session_id: candidate.session_id,
+        has_resume: candidate.has_resume,
+        resume_id: candidate.resume_id
+      });
       
-      // Try to get recordings directly based on the URL candidate ID
-      let { data: directRecordings, error: directError } = await supabase
+      // Try approach 1: Direct query by candidate_id
+      let { data: recordingData, error: recordingError } = await supabase
         .from('recordings')
         .select('*')
-        .eq('candidate_id', candidateId)
-        .order('created_at', { ascending: true });
-        
-      if (directError) {
-        console.error('Error fetching recordings by candidate ID:', directError);
-        setRecordings([]);
+        .eq('candidate_id', candidateId);
+
+      if (recordingError) {
+        console.error('Error fetching recordings by candidate_id:', recordingError);
+      }
+
+      if (recordingData && recordingData.length > 0) {
+        console.log(`Found ${recordingData.length} recordings for candidate:`, { 
+          candidateId: candidateId,
+          recordingIds: recordingData.map(r => r.id),
+          sessionIds: recordingData.map(r => r.session_id).filter(Boolean)
+        });
+        setRecordings(recordingData);
+        await fetchQuestionsForRecordings(recordingData);
         setLoadingRecordings(false);
         return;
-      }
-      
-      console.log(`Found ${directRecordings?.length || 0} recordings for candidate ID ${candidateId}`);
-      
-      if (directRecordings && directRecordings.length > 0) {
-        setRecordings(directRecordings);
-        
-        // Fetch questions for these recordings
-        await fetchQuestionsForRecordings(directRecordings);
       } else {
-        console.log('No recordings found for this candidate');
-        setRecordings([]);
+        console.log('No recordings found by direct candidate_id query. Trying other approaches...');
       }
+      
+      // 2. If the candidate has a nested candidate object with ID, try that
+      if (candidate.candidate && candidate.candidate.id) {
+        console.log(`Trying nested candidate ID: ${candidate.candidate.id}`);
+        
+        const { data: nestedRecordings, error: nestedError } = await supabase
+          .from('recordings')
+          .select('*')
+          .eq('candidate_id', candidate.candidate.id)
+          .order('created_at', { ascending: true });
+        
+        console.log(`Query 2 - Nested candidate.id (${candidate.candidate.id}):`, { 
+          found: nestedRecordings?.length || 0, 
+          error: nestedError ? nestedError.message : null 
+        });
+        
+        if (nestedRecordings && nestedRecordings.length > 0) {
+          console.log(`Found ${nestedRecordings.length} recordings via nested candidate ID`);
+          setRecordings(nestedRecordings);
+          await fetchQuestionsForRecordings(nestedRecordings);
+          setLoadingRecordings(false);
+          return;
+        }
+      }
+      
+      // 3. If the candidate has a session_id, try to find recordings by session
+      if (candidate.session_id) {
+        console.log(`Trying session ID: ${candidate.session_id}`);
+        
+        const { data: sessionRecordings, error: sessionError } = await supabase
+          .from('recordings')
+          .select('*')
+          .eq('session_id', candidate.session_id)
+          .order('created_at', { ascending: true });
+        
+        console.log(`Query 3 - Session ID (${candidate.session_id}):`, { 
+          found: sessionRecordings?.length || 0, 
+          error: sessionError ? sessionError.message : null 
+        });
+        
+        if (sessionRecordings && sessionRecordings.length > 0) {
+          console.log(`Found ${sessionRecordings.length} recordings via session ID`);
+          setRecordings(sessionRecordings);
+          await fetchQuestionsForRecordings(sessionRecordings);
+          setLoadingRecordings(false);
+          return;
+        }
+      }
+      
+      // 4. Last attempt - let's check if there are any sessions for this candidate
+      // and try to find recordings via those sessions
+      console.log('Trying to find sessions for this candidate...');
+      
+      // Look up sessions by candidate ID
+      const { data: sessions, error: sessionsError } = await supabase
+        .from('sessions')
+        .select('id')
+        .eq('candidate_id', candidateId);
+      
+      if (sessionsError) {
+        console.error('Error fetching sessions:', sessionsError);
+      } else if (sessions && sessions.length > 0) {
+        console.log(`Found ${sessions.length} sessions for candidate: ${sessions.map(s => s.id).join(', ')}`);
+        
+        // Look for recordings associated with any of these sessions
+        const sessionIds = sessions.map(s => s.id);
+        
+        const { data: sessionRecordings, error: multiSessionError } = await supabase
+          .from('recordings')
+          .select('*')
+          .in('session_id', sessionIds)
+          .order('created_at', { ascending: true });
+        
+        console.log(`Query 4 - Multiple Sessions:`, { 
+          sessions: sessionIds,
+          found: sessionRecordings?.length || 0, 
+          error: multiSessionError ? multiSessionError.message : null 
+        });
+        
+        if (sessionRecordings && sessionRecordings.length > 0) {
+          console.log(`Found ${sessionRecordings.length} recordings via session lookup`);
+          setRecordings(sessionRecordings);
+          await fetchQuestionsForRecordings(sessionRecordings);
+          setLoadingRecordings(false);
+          return;
+        }
+      } else {
+        console.log('No sessions found for this candidate');
+      }
+      
+      // If we got here, no recordings were found via any method
+      console.log('No recordings found for this candidate via any method');
+      setRecordings([]);
     } catch (error) {
       console.error('Error fetching recordings:', error);
       setRecordings([]);
@@ -506,9 +604,10 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
   useEffect(() => {
     // Fetch recordings when candidate is loaded
     if (candidate && candidate.id) {
+      console.log('Candidate loaded, triggering fetchRecordings');
       fetchRecordings();
     }
-  }, [candidate]);
+  }, [candidate?.id]); // Only re-run if candidate.id changes
   
   // Helper function to fetch questions for a set of recordings
   const fetchQuestionsForRecordings = async (recordingsData: any[]) => {
