@@ -185,274 +185,277 @@ export default function ScreeningPage() {
     }
   };
 
+  // Function to handle selecting/deselecting candidates for interview
+  const handleSelectForInterview = async (candidateId: string, isSelected: boolean) => {
+    try {
+      const { data, error } = await supabase
+        .from('resume_evaluations')
+        .update({ selected_for_interview: isSelected })
+        .eq('id', candidateId);
+
+      if (error) {
+        console.error('Error updating candidate status:', error);
+        return;
+      }
+
+      // Update local state
+      setResumeEvaluations(prevEvaluations => 
+        prevEvaluations.map(evaluation => 
+          evaluation.id === candidateId
+            ? { ...evaluation, selected_for_interview: isSelected }
+            : evaluation
+        )
+      );
+    } catch (error) {
+      console.error('Error selecting candidate for interview:', error);
+    }
+  };
+
   return (
-    <div className="px-4 py-8">
-      <div className="mb-6 flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Resume Screening</h1>
-        <div className="flex gap-2">
-          <Link href="/admin" className="px-4 py-2 bg-gray-100 rounded-md text-gray-700 hover:bg-gray-200">
-            Back to Dashboard
-          </Link>
-          <button 
-            onClick={fetchJobPostings}
-            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
-          >
-            Refresh
-          </button>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <header className="bg-white shadow-sm rounded-lg p-6">
+        <h1 className="text-2xl font-semibold text-gray-900 mb-2">Resume Screening</h1>
+        <p className="text-gray-500">
+          Upload candidate resumes and analyze them against job descriptions
+        </p>
+      </header>
 
-      {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-          <span className="ml-2">Loading...</span>
+      <Tabs defaultValue="upload" className="space-y-6">
+        <div className="bg-white shadow-sm rounded-lg p-4">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="upload" className="text-sm font-medium py-2.5">
+              Upload Resumes
+            </TabsTrigger>
+            <TabsTrigger value="results" className="text-sm font-medium py-2.5">
+              View Results
+            </TabsTrigger>
+          </TabsList>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-6">
-          <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-            <h2 className="text-xl font-semibold mb-4">Select Job Posting</h2>
+
+        <TabsContent value="upload" className="space-y-6">
+          <div className="bg-white shadow-sm rounded-lg p-6">
+            <h2 className="text-lg font-semibold mb-4 text-gray-900">Select Job Position</h2>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div>
-                <label htmlFor="job-select" className="block text-sm font-medium text-gray-700 mb-2">
-                  Job Position
-                </label>
-                <select
-                  id="job-select"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  value={selectedJobId || ''}
-                  onChange={(e) => setSelectedJobId(e.target.value)}
-                >
-                  <option value="">-- Select a job posting --</option>
-                  {jobPostings.map((job) => (
-                    <option key={job.id} value={job.id}>
-                      {job.title} ({job.department || 'No department'})
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Filter resumes against a specific job description
+              </label>
               
-              <div className="md:col-span-2">
-                {selectedJobId ? (
-                  (() => {
-                    const job = jobPostings.find(j => j.id === selectedJobId);
-                    if (!job) return null;
-                    
-                    return (
-                      <div>
-                        <h3 className="text-lg font-medium text-gray-900 mb-2">{job.title}</h3>
-                        <p className="text-sm text-gray-600 mb-3">{job.department || 'No department'}</p>
-                        
-                        <div className="mb-4 flex flex-wrap gap-1">
-                          {job.skills && job.skills.map((skill: string, i: number) => (
-                            <span key={i} className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
-                              {skill}
-                            </span>
-                          ))}
-                        </div>
-                        
-                        <div className="mb-4">
-                          <h4 className="text-sm font-medium text-gray-700 mb-1">Description:</h4>
-                          <p className="text-sm text-gray-600">{job.description}</p>
-                        </div>
-                        
-                        {job.requirements && job.requirements.length > 0 && (
-                          <div className="mb-4">
-                            <h4 className="text-sm font-medium text-gray-700 mb-1">Requirements:</h4>
-                            <ul className="list-disc list-inside text-sm text-gray-600">
-                              {job.requirements.map((req: string, i: number) => (
-                                <li key={i}>{req}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        
-                        {job.file_url && (
-                          <a
-                            href={job.file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-                          >
-                            <FileText className="h-4 w-4 mr-2" />
-                            View Full Job Description
-                          </a>
-                        )}
-                      </div>
-                    );
-                  })()
-                ) : (
-                  <div className="flex items-center justify-center h-40 bg-gray-50 rounded-md">
-                    <p className="text-gray-500">Select a job posting to view details</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {selectedJobId ? (
-            <div className="bg-white p-6 rounded-lg shadow-md">
-              <h2 className="text-xl font-semibold mb-4">Upload Resumes</h2>
-              
-              <ResumeUploader 
-                jobPostingId={selectedJobId}
-                onUploadComplete={handleUploadComplete}
-              />
-              
-              {analyzingResumes && (
-                <div className="mt-4 p-4 bg-blue-50 text-blue-700 rounded-md flex items-center">
-                  <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                  <span>Analyzing resumes against job requirements...</span>
-                </div>
-              )}
-              
-              {showResults && (
-                <div className="mt-6 flex justify-between items-center">
-                  <div className="flex items-center text-gray-700">
-                    <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                    <span>{resumeEvaluations.length} resume(s) analyzed</span>
-                  </div>
-                  <button
-                    onClick={handleViewResults}
-                    className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600"
-                  >
-                    View Results
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="bg-white p-6 rounded-lg shadow-md text-center">
-              <h2 className="text-xl font-semibold mb-4">Upload Resumes</h2>
-              <p className="text-gray-500 mb-4">Please select a job posting first</p>
-            </div>
-          )}
-
-          {selectedJobId && jobPostings.length > 0 && showResults && (
-            <div className="bg-white p-6 rounded-lg shadow-md">
-              <h2 className="text-xl font-semibold mb-4">Analysis Results</h2>
-              
-              {resumeEvaluations.length === 0 ? (
-                <div className="text-center py-8 bg-gray-50 rounded-md">
-                  <p className="text-gray-500">No evaluation results yet.</p>
-                  <p className="text-sm text-gray-400 mt-1">
-                    Upload and analyze resumes to see results here.
-                  </p>
+              {loading ? (
+                <div className="flex items-center space-x-2">
+                  <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
+                  <span className="text-gray-500">Loading job postings...</span>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Resume
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Overall Score
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Ownership
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Org Impact
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Independence
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Strategic
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Skills
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Action
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {resumeEvaluations.map((evaluation) => (
-                        <tr key={evaluation.id}>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center">
-                              <div className="ml-4">
-                                <div className="text-sm font-medium text-gray-900">
-                                  {evaluation.resume?.file_name || 'Unknown resume'}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              {evaluation.overall_score !== null && evaluation.overall_score !== undefined
-                                ? evaluation.overall_score.toFixed(1)
-                                : 'N/A'}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              L{evaluation.ownership_level || 0} ({evaluation.ownership_score !== null && evaluation.ownership_score !== undefined
-                                ? evaluation.ownership_score.toFixed(1)
-                                : 'N/A'})
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              L{evaluation.organization_impact_level || 0} ({evaluation.organization_impact_score !== null && evaluation.organization_impact_score !== undefined
-                                ? evaluation.organization_impact_score.toFixed(1)
-                                : 'N/A'})
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              L{evaluation.independence_level || 0} ({evaluation.independence_score !== null && evaluation.independence_score !== undefined
-                                ? evaluation.independence_score.toFixed(1)
-                                : 'N/A'})
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              L{evaluation.strategic_alignment_level || 0} ({evaluation.strategic_alignment_score !== null && evaluation.strategic_alignment_score !== undefined
-                                ? evaluation.strategic_alignment_score.toFixed(1)
-                                : 'N/A'})
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              L{evaluation.skills_level || 0} ({evaluation.skills_score !== null && evaluation.skills_score !== undefined
-                                ? evaluation.skills_score.toFixed(1)
-                                : 'N/A'})
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <a 
-                              href={evaluation.resume?.file_url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:text-blue-900 mr-3"
-                            >
-                              View
-                            </a>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {jobPostings.map((job) => (
+                    <div
+                      key={job.id}
+                      onClick={() => setSelectedJobId(job.id)}
+                      className={`border rounded-lg p-4 cursor-pointer transition-all duration-200 ${
+                        selectedJobId === job.id 
+                          ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' 
+                          : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                      }`}
+                    >
+                      <div className="flex items-start">
+                        <div className={`mt-0.5 rounded-full flex items-center justify-center p-1 ${
+                          selectedJobId === job.id ? 'bg-blue-500' : 'bg-gray-200'
+                        }`}>
+                          <svg 
+                            className={`h-4 w-4 ${selectedJobId === job.id ? 'text-white' : 'text-gray-400'}`} 
+                            fill="none" 
+                            viewBox="0 0 24 24" 
+                            stroke="currentColor"
+                          >
+                            <path 
+                              strokeLinecap="round" 
+                              strokeLinejoin="round" 
+                              strokeWidth={2} 
+                              d={selectedJobId === job.id 
+                                ? "M5 13l4 4L19 7" 
+                                : "M12 4v16m8-8H4"
+                              } 
+                            />
+                          </svg>
+                        </div>
+                        <div className="ml-3 flex-1">
+                          <h3 className="text-base font-medium text-gray-900">{job.title}</h3>
+                          <p className="mt-1 text-sm text-gray-500 line-clamp-2">
+                            {job.description.slice(0, 100)}...
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
+            </div>
+            
+            <h2 className="text-lg font-semibold mb-4 text-gray-900 mt-8">Upload Resumes</h2>
+            
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 transition-all duration-200 hover:border-blue-400 bg-gray-50 hover:bg-blue-50">
+              <ResumeUploader
+                jobPostingId={selectedJobId || ''}
+                onUploadComplete={handleUploadComplete}
+              />
+              {(!selectedJobId || uploadingResumes) && (
+                <div className="mt-4 text-center">
+                  {!selectedJobId ? (
+                    <p className="text-sm text-gray-500">Please select a job position first</p>
+                  ) : (
+                    <div className="flex items-center justify-center">
+                      <Loader2 className="h-5 w-5 text-blue-500 animate-spin mr-2" />
+                      <p className="text-sm text-gray-600">Processing uploads...</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="results" className="space-y-6">
+          {resumeEvaluations.length > 0 ? (
+            <div className="bg-white shadow-sm rounded-lg divide-y divide-gray-200">
+              <div className="p-6">
+                <h2 className="text-lg font-semibold mb-4 text-gray-900">Evaluation Results</h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <div className="text-sm font-medium text-gray-500 mb-1">Total Candidates</div>
+                    <div className="text-2xl font-bold text-gray-900">{resumeEvaluations.length}</div>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                    <div className="text-sm font-medium text-gray-500 mb-1">High Scores (80%+)</div>
+                    <div className="text-2xl font-bold text-green-600">
+                      {resumeEvaluations.filter(e => e.overall_score >= 80).length}
+                    </div>
+                  </div>
+                  <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                    <div className="text-sm font-medium text-gray-500 mb-1">Medium Scores (60-79%)</div>
+                    <div className="text-2xl font-bold text-amber-600">
+                      {resumeEvaluations.filter(e => e.overall_score >= 60 && e.overall_score < 80).length}
+                    </div>
+                  </div>
+                </div>
+              </div>
               
-              <div className="mt-6 flex justify-end">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-300">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">Candidate</th>
+                      <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Overall Score</th>
+                      <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Resume</th>
+                      <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Status</th>
+                      <th scope="col" className="relative py-3.5 pl-3 pr-4 text-right text-sm font-semibold text-gray-900">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    {resumeEvaluations.map((evaluation) => (
+                      <tr key={evaluation.id} className="hover:bg-gray-50">
+                        <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm">
+                          <div className="font-medium text-gray-900">
+                            {evaluation.resume?.candidate_name || 'Unknown'}
+                          </div>
+                          <div className="text-gray-500">
+                            {evaluation.resume?.candidate_email || 'No email provided'}
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-4 text-sm">
+                          <div className="flex items-center">
+                            <div className="mr-2 flex-shrink-0">
+                              <div 
+                                className={`h-2.5 w-2.5 rounded-full ${
+                                  evaluation.overall_score >= 80 ? 'bg-green-500' : 
+                                  evaluation.overall_score >= 60 ? 'bg-amber-500' : 'bg-red-500'
+                                }`} 
+                              />
+                            </div>
+                            <div className="w-16 bg-gray-200 rounded-full h-2.5 mr-2">
+                              <div
+                                className={`h-2.5 rounded-full ${
+                                  evaluation.overall_score >= 80 ? 'bg-green-500' : 
+                                  evaluation.overall_score >= 60 ? 'bg-amber-500' : 'bg-red-500'
+                                }`}
+                                style={{ width: `${evaluation.overall_score}%` }}
+                              ></div>
+                            </div>
+                            <span>{evaluation.overall_score}%</span>
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-4 text-sm">
+                          {evaluation.resume?.file_url ? (
+                            <a
+                              href={evaluation.resume.file_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-900 font-medium"
+                            >
+                              View Resume
+                            </a>
+                          ) : (
+                            <span className="text-gray-500">Not available</span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-4 text-sm">
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                            evaluation.selected_for_interview 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {evaluation.selected_for_interview ? 'Selected' : 'Pending'}
+                          </span>
+                        </td>
+                        <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium">
+                          <a
+                            href={`/admin/candidates/${evaluation.id}`}
+                            className="text-blue-600 hover:text-blue-900 mr-4"
+                          >
+                            View
+                          </a>
+                          <button
+                            onClick={() => handleSelectForInterview(evaluation.id, !evaluation.selected_for_interview)}
+                            className={`${
+                              evaluation.selected_for_interview 
+                                ? 'text-gray-600 hover:text-gray-900' 
+                                : 'text-blue-600 hover:text-blue-900'
+                            }`}
+                          >
+                            {evaluation.selected_for_interview ? 'Deselect' : 'Select'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white shadow-sm rounded-lg p-10 text-center">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-blue-100">
+                <FileText className="h-6 w-6 text-blue-600" />
+              </div>
+              <h3 className="mt-5 text-lg font-medium text-gray-900">No evaluation results</h3>
+              <p className="mt-2 text-sm text-gray-500">
+                {showResults 
+                  ? "No evaluations found for the selected job posting." 
+                  : "Upload resumes and select a job posting to see evaluation results."}
+              </p>
+              <div className="mt-6">
                 <button
-                  onClick={handleViewResults}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                  onClick={() => (Tabs as any).set('upload')}
+                  type="button"
+                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
-                  Go to Candidate Dashboard
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload Resumes
                 </button>
               </div>
             </div>
           )}
-        </div>
-      )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 } 

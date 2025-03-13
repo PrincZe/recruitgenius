@@ -751,491 +751,436 @@ function CandidateDetailClient({ candidateId }: { candidateId: string }) {
   // The data is directly on the analysisJson object, not nested in an analysis property
   
   // Render the candidate detail page
-  return (
-    <div className="p-6 md:p-8 max-w-screen-xl mx-auto">
-      <Link href="/admin/candidates" className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-6">
-        <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Candidates
-      </Link>
-      
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">{fileName || 'Unknown Candidate'}</h1>
-          <p className="text-gray-500">
-            Resume uploaded {format(new Date(candidate.created_at), 'MMMM d, yyyy')}
-          </p>
-        </div>
-        <div className="mt-4 md:mt-0">
-          {interviewLink ? (
-            <div className="space-y-2">
-              <div className="flex items-center text-green-600 font-medium">
-                <CheckCircle className="w-4 h-4 mr-2" />
-                Interview Ready
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="text"
-                  value={interviewLink}
-                  readOnly
-                  className="text-sm px-3 py-2 border rounded-l-md focus:outline-none flex-1 w-60"
-                />
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(interviewLink);
-                    alert('Interview link copied to clipboard!');
-                  }}
-                  className="bg-blue-600 text-white px-3 py-2 text-sm rounded-r-md hover:bg-blue-700"
-                >
-                  Copy
-                </button>
-              </div>
+  const renderContent = () => {
+    if (loading) {
+      return <LoadingState />;
+    }
+
+    if (error) {
+      return (
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md mb-6">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <XCircle className="h-5 w-5 text-red-400" />
             </div>
-          ) : (
-            <button
-              className="inline-flex items-center px-4 py-2 rounded-md font-medium text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed"
-              onClick={generateInterviewLink}
-              disabled={generatingLink}
-            >
-              {generatingLink ? (
-                <>
-                  <span className="animate-spin mr-2">⟳</span>
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Mail className="w-4 h-4 mr-2" />
-                  Invite to Interview
-                </>
-              )}
-            </button>
-          )}
-          {error && (
-            <p className="text-red-500 text-xs mt-1">{error}</p>
-          )}
-        </div>
-      </header>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Overall Score Card */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold mb-4">Overall Score</h2>
-          <div className="flex justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Overall Score</h3>
-              <p className="text-sm text-gray-500">Based on the 5-dimension evaluation</p>
-            </div>
-            <div className="text-right">
-              <span className="text-3xl font-bold">
-                {candidate?.overall_score !== null && candidate?.overall_score !== undefined
-                  ? candidate.overall_score.toFixed(0)
-                  : 'N/A'}<span className="text-xl font-normal text-gray-500">/100</span>
-              </span>
-            </div>
-          </div>
-          
-          <div className="w-full bg-gray-200 rounded-full h-2.5 mb-6">
-            <div
-              className="bg-blue-600 h-2.5 rounded-full"
-              style={{ width: `${candidate?.overall_score !== null && candidate?.overall_score !== undefined 
-                ? Math.min(Math.max(candidate.overall_score, 0), 100) 
-                : 0}%` }}
-            ></div>
-          </div>
-          <p className="mt-4 text-gray-500 text-sm">
-            Evaluated against: <span className="font-medium text-gray-700">{candidate.job_posting?.title || 'Job Position'}</span>
-          </p>
-        </div>
-        
-        {/* Dimension Scores Card */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold mb-4">Dimension Scores</h2>
-          <div className="space-y-4">
-            <div>
-              <div className="flex justify-between mb-1">
-                <span>Ownership <span className="text-xs text-gray-500">L{candidate?.ownership_level || 4}</span></span>
-                <span>{candidate?.ownership_score !== null && candidate?.ownership_score !== undefined
-                  ? candidate.ownership_score.toFixed(1)
-                  : 'N/A'}/10</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className="bg-blue-600 h-2 rounded-full"
-                  style={{ width: `${candidate?.ownership_score !== null && candidate?.ownership_score !== undefined
-                    ? Math.min(Math.max(candidate.ownership_score * 10, 0), 100)
-                    : 0}%` }}
-                ></div>
-              </div>
-            </div>
-            
-            <div>
-              <div className="flex justify-between mb-1">
-                <span>Organization Impact <span className="text-xs text-gray-500">L{candidate?.organization_impact_level || 4}</span></span>
-                <span>{candidate?.organization_impact_score !== null && candidate?.organization_impact_score !== undefined
-                  ? candidate.organization_impact_score.toFixed(1)
-                  : 'N/A'}/10</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className="bg-blue-600 h-2 rounded-full"
-                  style={{ width: `${candidate?.organization_impact_score !== null && candidate?.organization_impact_score !== undefined
-                    ? Math.min(Math.max(candidate.organization_impact_score * 10, 0), 100)
-                    : 0}%` }}
-                ></div>
-              </div>
-            </div>
-            
-            <div>
-              <div className="flex justify-between mb-1">
-                <span>Independence <span className="text-xs text-gray-500">L{candidate?.independence_level || 4}</span></span>
-                <span>{candidate?.independence_score !== null && candidate?.independence_score !== undefined
-                  ? candidate.independence_score.toFixed(1)
-                  : 'N/A'}/10</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className="bg-blue-600 h-2 rounded-full"
-                  style={{ width: `${candidate?.independence_score !== null && candidate?.independence_score !== undefined
-                    ? Math.min(Math.max(candidate.independence_score * 10, 0), 100)
-                    : 0}%` }}
-                ></div>
-              </div>
-            </div>
-            
-            <div>
-              <div className="flex justify-between mb-1">
-                <span>Strategic Alignment <span className="text-xs text-gray-500">L{candidate?.strategic_alignment_level || 4}</span></span>
-                <span>{candidate?.strategic_alignment_score !== null && candidate?.strategic_alignment_score !== undefined
-                  ? candidate.strategic_alignment_score.toFixed(1)
-                  : 'N/A'}/10</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className="bg-blue-600 h-2 rounded-full"
-                  style={{ width: `${candidate?.strategic_alignment_score !== null && candidate?.strategic_alignment_score !== undefined
-                    ? Math.min(Math.max(candidate.strategic_alignment_score * 10, 0), 100)
-                    : 0}%` }}
-                ></div>
-              </div>
-            </div>
-            
-            {/* Add Skills dimension */}
-            <div>
-              <div className="flex justify-between mb-1">
-                <span>Skills <span className="text-xs text-gray-500">L{candidate?.skills_level || 4}</span></span>
-                <span>{candidate?.skills_score !== null && candidate?.skills_score !== undefined
-                  ? candidate.skills_score.toFixed(1)
-                  : 'N/A'}/10</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className="bg-blue-600 h-2 rounded-full"
-                  style={{ width: `${candidate?.skills_score !== null && candidate?.skills_score !== undefined
-                    ? Math.min(Math.max(candidate.skills_score * 10, 0), 100)
-                    : 0}%` }}
-                ></div>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        {/* Analysis Details Card */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold mb-4">Analysis Details</h2>
-          
-          <div className="space-y-4">
-            {/* Summary Section */}
-            <div>
-              <h3 className="font-medium mb-2">Summary</h3>
-              <p className="text-gray-700 text-sm">
-                {analysisJson.summary || 'No summary available'}
+            <div className="ml-3">
+              <p className="text-sm text-red-700">
+                {error}
               </p>
             </div>
-            
-            {/* Strengths Section */}
-            <div>
-              <h3 className="font-medium mb-2">Strengths</h3>
-              <ul className="list-disc pl-5 text-gray-700 text-sm">
-                {(analysisJson.strengths && Array.isArray(analysisJson.strengths) && analysisJson.strengths.length > 0) ? (
-                  analysisJson.strengths.map((strength: string, index: number) => (
-                    <li key={index}>{strength}</li>
-                  ))
-                ) : (
-                  <li>No strengths data available</li>
-                )}
-              </ul>
-            </div>
-            
-            {/* Development Areas Section */}
-            <div>
-              <h3 className="font-medium mb-2">Development Areas</h3>
-              <ul className="list-disc pl-5 text-gray-700 text-sm">
-                {(analysisJson.developmentAreas && Array.isArray(analysisJson.developmentAreas) && analysisJson.developmentAreas.length > 0) ? (
-                  analysisJson.developmentAreas.map((area: string, index: number) => (
-                    <li key={index}>{area}</li>
-                  ))
-                ) : (
-                  <li>No development areas data available</li>
-                )}
-              </ul>
-            </div>
-            
-            {/* Matched Skills Section */}
-            <div>
-              <h3 className="font-medium mb-2">Matched Skills</h3>
-              <div className="flex flex-wrap gap-2">
-                {(analysisJson.matchedSkills && Array.isArray(analysisJson.matchedSkills) && analysisJson.matchedSkills.length > 0) ? (
-                  analysisJson.matchedSkills.map((skill: string, index: number) => (
-                    <span key={index} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
-                      {skill}
-                    </span>
-                  ))
-                ) : (
-                  <span>No matched skills data available</span>
-                )}
-              </div>
-            </div>
           </div>
         </div>
-      </div>
-      
-      {/* Resume Preview Card - This is optional and can be implemented if needed */}
-      <div className="mt-6 bg-white rounded-lg shadow p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Resume Preview</h2>
-          
-          {(candidate?.resume?.id && (needsRescan || hasFailedAnalysis)) && (
-            <button
-              onClick={handleScanResume}
-              disabled={scanningResume}
-              className={`px-4 py-2 rounded-md text-white ${
-                scanningResume 
-                  ? 'bg-gray-400 cursor-not-allowed' 
-                  : 'bg-blue-600 hover:bg-blue-700'
-              }`}
-            >
-              {scanningResume ? (
-                <span className="flex items-center">
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Scanning...
+      );
+    }
+
+    return (
+      <>
+        {/* Candidate Profile Header */}
+        <div className="bg-white rounded-lg shadow-sm mb-6 overflow-hidden">
+          <div className="bg-gradient-to-r from-blue-600 to-blue-800 px-6 py-4">
+            <div className="flex items-center justify-between">
+              <h1 className="text-xl font-semibold text-white flex items-center">
+                <User className="h-6 w-6 mr-2" />
+                {candidate?.candidate?.name || (candidate?.resume?.candidate_name || 'Candidate Profile')}
+              </h1>
+              {candidate?.selected_for_interview ? (
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  <CheckCircle className="h-4 w-4 mr-1" /> Selected for Interview
                 </span>
-              ) : (
-                <span className="flex items-center">
-                  <FileText className="h-4 w-4 mr-2" />
-                  {hasFailedAnalysis ? 'Retry Analysis' : 'Scan Resume'}
-                </span>
-              )}
-            </button>
-          )}
-        </div>
-        
-        {scanError && (
-          <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-md">
-            <p className="text-sm font-medium">Error: {scanError}</p>
-          </div>
-        )}
-        
-        {scanSuccess && (
-          <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-md">
-            <p className="text-sm font-medium">Resume successfully scanned and analyzed!</p>
-          </div>
-        )}
-        
-        {hasFailedAnalysis && !scanningResume && !scanSuccess && (
-          <div className="mb-4 p-3 bg-amber-50 text-amber-700 rounded-md">
-            <p className="text-sm font-medium">The previous analysis was not accurate. Please click "Retry Analysis" to generate a better result.</p>
-          </div>
-        )}
-        
-        <div className="border rounded-md p-4 flex items-center justify-center min-h-[200px]">
-          {candidate?.resume?.file_url ? (
-            <a 
-              href={candidate.resume.file_url} 
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center text-blue-600 hover:text-blue-800"
-            >
-              <FileText className="mr-2 h-5 w-5" />
-              View Resume
-            </a>
-          ) : (
-            <p className="text-gray-500">No resume file available</p>
-          )}
-        </div>
-      </div>
-      
-      {/* Interview Recordings Section */}
-      <div className="mt-6">
-        <h2 className="text-2xl font-bold mb-4">Interview Recordings</h2>
-        
-        {loadingRecordings ? (
-          <div className="flex justify-center p-8">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700"></div>
-          </div>
-        ) : recordings.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-500 mb-4">No interview recordings available for this candidate.</p>
-            <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-              <p className="text-yellow-800">
-                <strong>Note:</strong> Only recordings explicitly linked to this specific candidate will appear here. 
-                Name-based matching has been disabled to prevent incorrect associations.
-              </p>
-              <p className="text-yellow-800 mt-2">
-                If this candidate has completed an interview and you don't see the recordings, please check:
-              </p>
-              <ul className="list-disc ml-5 mt-2 text-yellow-800">
-                <li>The candidate completed the interview using the link generated from this specific resume</li>
-                <li>The interview was fully submitted after all questions were answered</li>
-                <li>You're viewing the correct candidate profile for {fileName || 'this candidate'}</li>
-              </ul>
+              ) : null}
             </div>
           </div>
-        ) : (
-          <div className="space-y-6">
-            {recordings.map((recording, index) => (
-              <div key={recording.id} className="bg-white rounded-lg shadow overflow-hidden">
-                <div className="p-6 border-b border-gray-200">
-                  <h3 className="text-lg font-medium mb-2">
-                    Question {index + 1}: {questions[recording.question_id]?.text || 'Unknown Question'}
-                  </h3>
-                  
-                  {questions[recording.question_id]?.category && (
-                    <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
-                      {questions[recording.question_id].category}
-                    </span>
-                  )}
-                  
-                  <p className="text-sm text-gray-500 mt-2">
-                    Recorded on {formatDate(recording.created_at)}
+          
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Left column - Basic info */}
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-sm font-medium text-gray-500">Email</h2>
+                  <p className="mt-1 text-base text-gray-900 flex items-center">
+                    <Mail className="h-4 w-4 text-gray-400 mr-1" />
+                    {candidate?.candidate?.email || (candidate?.resume?.candidate_email || 'Not available')}
                   </p>
                 </div>
                 
-                <div className="p-6 border-b border-gray-200">
-                  <h4 className="text-md font-medium mb-3">Audio Response</h4>
-                  {recording.audio_url ? (
-                    <audio 
-                      src={recording.audio_url} 
-                      controls 
-                      className="w-full"
-                      onError={(e) => {
-                        console.error('Audio playback error:', e);
-                        // Set fallback text when audio fails to load
-                        const target = e.target as HTMLAudioElement;
-                        target.style.display = 'none';
-                        target.parentElement?.appendChild(
-                          Object.assign(document.createElement('div'), {
-                            className: 'p-4 bg-red-50 text-red-700 rounded-md',
-                            textContent: 'Audio playback error. The recording may be corrupted or in an unsupported format.'
-                          })
-                        );
-                      }}
-                    />
-                  ) : (
-                    <div className="p-4 bg-red-50 text-red-700 rounded-md">
-                      Audio format not supported or audio not available
+                <div>
+                  <h2 className="text-sm font-medium text-gray-500">Status</h2>
+                  <select
+                    className="mt-1 block w-full text-base border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                    value={candidate?.status || 'pending'}
+                    disabled={generatingLink}
+                    onChange={(e) => updateCandidateStatus(e.target.value)}
+                  >
+                    <option value="new">New</option>
+                    <option value="reviewing">Reviewing</option>
+                    <option value="shortlisted">Shortlisted</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="hired">Hired</option>
+                  </select>
+                </div>
+              </div>
+              
+              {/* Middle column - Resume */}
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-sm font-medium text-gray-500">Resume</h2>
+                  {candidate?.resume?.file_url ? (
+                    <div className="mt-1 flex items-center">
+                      <a
+                        href={candidate.resume.file_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      >
+                        <FileText className="h-4 w-4 mr-2" />
+                        View Resume
+                      </a>
+                      <button
+                        onClick={handleScanResume}
+                        disabled={scanningResume}
+                        className="ml-3 inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {scanningResume ? (
+                          <>
+                            <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                            Scanning...
+                          </>
+                        ) : scanSuccess ? (
+                          <>
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                            Re-scan Resume
+                          </>
+                        ) : (
+                          <>
+                            <BarChart className="h-4 w-4 mr-2" />
+                            Analyze Resume
+                          </>
+                        )}
+                      </button>
                     </div>
+                  ) : (
+                    <p className="mt-1 text-sm text-gray-500">No resume uploaded</p>
                   )}
                 </div>
                 
-                <div className="p-6 border-b border-gray-200">
-                  <h4 className="text-md font-medium mb-3">Transcript</h4>
-                  <div className="p-4 bg-gray-50 rounded-md max-h-48 overflow-y-auto">
-                    {recording.transcript ? (
-                      <p className="text-gray-700 whitespace-pre-line">{recording.transcript}</p>
-                    ) : (
-                      <div className="text-center">
-                        <p className="text-gray-500 mb-4">
-                          {processingRecordings[recording.id]
-                            ? "Processing transcript..."
-                            : "No transcript available"}
-                        </p>
-                        
+                {scanError && (
+                  <div className="bg-red-50 border-l-4 border-red-500 p-4">
+                    <div className="flex">
+                      <div className="flex-shrink-0">
+                        <XCircle className="h-5 w-5 text-red-400" />
+                      </div>
+                      <div className="ml-3">
+                        <p className="text-sm text-red-700">{scanError}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Right column - Interview */}
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-sm font-medium text-gray-500">Interview Link</h2>
+                  {interviewLink ? (
+                    <div className="mt-1">
+                      <div className="flex items-center justify-between p-2 bg-gray-50 border border-gray-300 rounded-md">
+                        <code className="text-xs text-gray-800 overflow-x-auto max-w-xs truncate">
+                          {interviewLink}
+                        </code>
                         <button
-                          onClick={() => handleProcessRecording(recording.id, recording.audio_url)}
-                          disabled={processingRecordings[recording.id]}
-                          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                          onClick={() => {
+                            navigator.clipboard.writeText(interviewLink);
+                            alert('Link copied to clipboard!');
+                          }}
+                          className="ml-2 p-1 text-gray-500 hover:text-gray-700 focus:outline-none"
                         >
-                          {processingRecordings[recording.id] ? (
-                            <>
-                              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                              </svg>
-                              Processing...
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                              </svg>
-                              Process Recording
-                            </>
-                          )}
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                          </svg>
                         </button>
-                        
-                        {processingSuccess[recording.id] && (
-                          <div className="mt-4 p-2 bg-green-50 text-green-700 rounded-md">
-                            Recording processed successfully!
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={generateInterviewLink}
+                      disabled={generatingLink}
+                      className="mt-1 inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {generatingLink ? (
+                        <>
+                          <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <Mic className="h-4 w-4 mr-2" />
+                          Generate Interview Link
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Analysis Section with Tabs */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <div className="flex items-center mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">Analysis Details</h2>
+          </div>
+          
+          <div className="border-b border-gray-200 mb-6">
+            <nav className="flex space-x-8" aria-label="Tabs">
+              <button className="border-blue-500 text-blue-600 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                Resume Analysis
+              </button>
+              <button className="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                Interview Responses
+              </button>
+            </nav>
+          </div>
+          
+          {candidate?.analysis_json ? (
+            <div className="space-y-8">
+              {/* Summary */}
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-3">Summary</h3>
+                <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
+                  <p className="text-gray-700">
+                    {candidate.analysis_json.summary || 
+                     candidate.analysis_json.analysis?.summary || 
+                     "No summary available for this candidate."}
+                  </p>
+                </div>
+              </div>
+              
+              {/* Strengths */}
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-3">Strengths</h3>
+                {candidate.analysis_json.strengths || 
+                 candidate.analysis_json.analysis?.strengths ? (
+                  <ul className="list-disc pl-5 space-y-2">
+                    {(candidate.analysis_json.strengths || 
+                      candidate.analysis_json.analysis?.strengths || []).map((strength: string, index: number) => (
+                      <li key={index} className="text-gray-700">{strength}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-gray-500 italic">No strengths listed.</p>
+                )}
+              </div>
+              
+              {/* Development Areas */}
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-3">Areas for Development</h3>
+                {candidate.analysis_json.developmentAreas || 
+                 candidate.analysis_json.analysis?.developmentAreas ? (
+                  <ul className="list-disc pl-5 space-y-2">
+                    {(candidate.analysis_json.developmentAreas || 
+                      candidate.analysis_json.analysis?.developmentAreas || []).map((area: string, index: number) => (
+                      <li key={index} className="text-gray-700">{area}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-gray-500 italic">No development areas listed.</p>
+                )}
+              </div>
+              
+              {/* Skills Match */}
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-3">Matched Skills</h3>
+                <div className="flex flex-wrap gap-2">
+                  {(candidate.analysis_json.matchedSkills || 
+                    candidate.analysis_json.analysis?.matchedSkills || []).map((skill: string, index: number) => (
+                    <span 
+                      key={index} 
+                      className="inline-flex items-center px-3 py-0.5 rounded-full text-sm font-medium bg-blue-100 text-blue-800"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                  {!(candidate.analysis_json.matchedSkills || 
+                     candidate.analysis_json.analysis?.matchedSkills ||
+                     []).length && (
+                    <p className="text-gray-500 italic">No matched skills found.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-gray-500 mb-4">No analysis data available for this candidate.</p>
+              {candidate?.resume?.file_url && (
+                <button
+                  onClick={handleScanResume}
+                  disabled={scanningResume}
+                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  {scanningResume ? (
+                    <>
+                      <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                      Analyzing Resume...
+                    </>
+                  ) : (
+                    <>
+                      <BarChart className="h-4 w-4 mr-2" />
+                      Analyze Resume Now
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Interview Recordings Section */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">Interview Recordings</h2>
+            <button
+              onClick={fetchRecordings}
+              className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+              </svg>
+              Refresh
+            </button>
+          </div>
+          
+          {loadingRecordings ? (
+            <div className="text-center py-8">
+              <Loader2 className="h-8 w-8 mx-auto text-blue-500 animate-spin" />
+              <p className="mt-2 text-gray-500">Loading recordings...</p>
+            </div>
+          ) : recordings.length > 0 ? (
+            <div className="space-y-4">
+              {recordings.map((recording) => (
+                <div 
+                  key={recording.id} 
+                  className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow duration-200"
+                >
+                  <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                    <div className="font-medium text-gray-900">
+                      {questions[recording.questionId]?.text || 'Question not found'}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {formatDate(recording.createdAt)}
+                    </div>
+                  </div>
+                  <div className="p-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex-1">
+                        {recording.audioUrl ? (
+                          <audio 
+                            controls 
+                            className="w-full"
+                          >
+                            <source src={recording.audioUrl} type="audio/webm" />
+                            Your browser does not support the audio element.
+                          </audio>
+                        ) : (
+                          <div className="text-sm text-gray-500">
+                            Audio not available
                           </div>
                         )}
-                        
-                        {processingErrors[recording.id] && (
-                          <div className="mt-4 p-2 bg-red-50 text-red-700 rounded-md">
-                            Error: {processingErrors[recording.id]}
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        {recording.transcript ? (
+                          <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Transcribed
                           </div>
+                        ) : (
+                          <button
+                            onClick={() => handleProcessRecording(recording.id, recording.audioUrl)}
+                            disabled={processingRecordings[recording.id]}
+                            className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {processingRecordings[recording.id] ? (
+                              <>
+                                <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                                Processing...
+                              </>
+                            ) : (
+                              <>
+                                <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"></path>
+                                </svg>
+                                Transcribe
+                              </>
+                            )}
+                          </button>
                         )}
+                      </div>
+                    </div>
+                    
+                    {recording.transcript && (
+                      <div className="mt-4 border-t border-gray-200 pt-4">
+                        <div className="flex items-center mb-2">
+                          <h3 className="text-sm font-medium text-gray-900">Transcript</h3>
+                          {recording.sentimentType && (
+                            <div className="ml-2">
+                              {renderSentimentType(recording.sentimentType)}
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-700 whitespace-pre-line">
+                          {recording.transcript}
+                        </p>
+                      </div>
+                    )}
+                    
+                    {processingErrors[recording.id] && (
+                      <div className="mt-2 text-sm text-red-600">
+                        Error: {processingErrors[recording.id]}
                       </div>
                     )}
                   </div>
                 </div>
-                
-                {recording.sentiment_type && (
-                  <div className="p-6">
-                    <h4 className="text-md font-medium mb-3">Analysis</h4>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                      <div className="bg-gray-50 p-4 rounded-md">
-                        <p className="text-sm font-medium text-gray-500 mb-1">Sentiment</p>
-                        <div>{renderSentimentType(recording.sentiment_type)}</div>
-                      </div>
-                      
-                      {recording.sentiment_score !== undefined && (
-                        <div className="bg-gray-50 p-4 rounded-md">
-                          <p className="text-sm font-medium text-gray-500 mb-1">Sentiment Score</p>
-                          <div className="text-lg font-semibold">
-                            {recording.sentiment_score !== null ? recording.sentiment_score.toFixed(2) : 'N/A'}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {recording.summary && (
-                      <div className="bg-gray-50 p-4 rounded-md mb-4">
-                        <p className="text-sm font-medium text-gray-500 mb-1">Summary</p>
-                        <p className="text-gray-700">{recording.summary}</p>
-                      </div>
-                    )}
-                    
-                    {recording.topics && recording.topics.length > 0 && (
-                      <div className="bg-gray-50 p-4 rounded-md">
-                        <p className="text-sm font-medium text-gray-500 mb-2">Topics Mentioned</p>
-                        <div className="flex flex-wrap gap-2">
-                          {recording.topics.map((topic: any, idx: number) => (
-                            <span key={idx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 mr-2 mb-2">
-                              {topic.topic} {topic.confidence && `(${(topic.confidence * 100).toFixed(0)}%)`}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+              ))}
+            </div>
+          ) : (
+            <div className="bg-gray-50 rounded-lg p-8 text-center">
+              <Mic className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No recordings found</h3>
+              <p className="text-gray-500 mb-4">
+                This candidate hasn't completed any interview questions yet.
+              </p>
+              {!interviewLink ? (
+                <button
+                  onClick={generateInterviewLink}
+                  disabled={generatingLink}
+                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  {generatingLink ? (
+                    <>
+                      <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                      Generating Link...
+                    </>
+                  ) : (
+                    <>
+                      <Mic className="h-4 w-4 mr-2" />
+                      Generate Interview Link
+                    </>
+                  )}
+                </button>
+              ) : (
+                <div className="text-sm text-gray-700">
+                  Share the interview link with the candidate to start the interview process.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </>
+    );
+  };
+
+  return renderContent();
 }
 
 function LoadingState() {
