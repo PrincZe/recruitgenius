@@ -17,6 +17,8 @@ export default function ScreeningPage() {
   const [analyzingResumes, setAnalyzingResumes] = useState(false);
   const [resumeEvaluations, setResumeEvaluations] = useState<any[]>([]);
   const [showResults, setShowResults] = useState(false);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [selectedJobDetails, setSelectedJobDetails] = useState<any>(null);
 
   // Initialize bucket and policies when component mounts
   useEffect(() => {
@@ -211,6 +213,31 @@ export default function ScreeningPage() {
     }
   };
 
+  // Add a function to view job details
+  const viewJobDetails = async (jobId: string, event: React.MouseEvent) => {
+    // Prevent the job card click event from firing
+    event.stopPropagation();
+    
+    try {
+      // Fetch full job details including file_url if it exists
+      const { data, error } = await supabase
+        .from('job_postings')
+        .select('*')
+        .eq('id', jobId)
+        .single();
+        
+      if (error) {
+        console.error('Error fetching job details:', error);
+        return;
+      }
+      
+      setSelectedJobDetails(data);
+      setShowDetailsModal(true);
+    } catch (error) {
+      console.error('Error viewing job details:', error);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <header className="bg-white shadow-sm rounded-lg p-6">
@@ -284,6 +311,12 @@ export default function ScreeningPage() {
                           <p className="mt-1 text-sm text-gray-500 line-clamp-2">
                             {job.description.slice(0, 100)}...
                           </p>
+                          <button
+                            onClick={(e) => viewJobDetails(job.id, e)}
+                            className="mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
+                          >
+                            View Details
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -456,6 +489,60 @@ export default function ScreeningPage() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Job Details Modal */}
+      {showDetailsModal && selectedJobDetails && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-xl">
+            <div className="flex justify-between items-center p-6 border-b">
+              <h2 className="text-xl font-semibold text-gray-900">
+                {selectedJobDetails.title}
+              </h2>
+              <button
+                onClick={() => setShowDetailsModal(false)}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <div className="mb-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Job Description</h3>
+                <div className="bg-gray-50 p-4 rounded-md border border-gray-200 whitespace-pre-wrap">
+                  {selectedJobDetails.description || 'No description available.'}
+                </div>
+              </div>
+              
+              {selectedJobDetails.file_url && (
+                <div className="mb-6">
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">Job Description PDF</h3>
+                  <a
+                    href={selectedJobDetails.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    View PDF
+                  </a>
+                </div>
+              )}
+              
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowDetailsModal(false)}
+                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 
