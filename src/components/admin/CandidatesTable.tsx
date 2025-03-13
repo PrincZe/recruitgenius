@@ -183,6 +183,12 @@ export default function CandidatesTable({
               </th>
               <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 <div className="flex items-center">
+                  Resume File
+                  <ChevronDown className="ml-1 h-4 w-4 text-gray-400" />
+                </div>
+              </th>
+              <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <div className="flex items-center">
                   Overall Score
                   <ChevronDown className="ml-1 h-4 w-4 text-gray-400" />
                 </div>
@@ -201,7 +207,7 @@ export default function CandidatesTable({
           <tbody className="bg-white divide-y divide-gray-200">
             {currentCandidates.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-6 py-4 text-center text-gray-500 text-sm">
+                <td colSpan={8} className="px-6 py-4 text-center text-gray-500 text-sm">
                   No candidates found
                 </td>
               </tr>
@@ -237,6 +243,11 @@ export default function CandidatesTable({
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">
                       {candidate.created_at ? new Date(candidate.created_at).toLocaleDateString() : 'N/A'}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">
+                      {candidate.resume?.file_name || 'No file'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
